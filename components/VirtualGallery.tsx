@@ -90,6 +90,7 @@ function ExhibitInSpace({
   const modelGroupRef = useRef<THREE.Group>(null)
   const [distanceToCamera, setDistanceToCamera] = useState<number>(Infinity)
   const { camera } = useThree()
+  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null)
 
   useFrame((state) => {
     if (groupRef.current) {
@@ -110,17 +111,42 @@ function ExhibitInSpace({
     <group ref={groupRef} position={position} rotation={[0, rotationY, 0]}>
       <mesh
         position={[0, 1, 0]}
-        onClick={(e) => {
-          e.stopPropagation()
-          if (document.pointerLockElement) {
-            document.exitPointerLock()
-          }
-          setTimeout(() => {
-            onClick()
-          }, 100)
-        }}
         onPointerUp={(e) => {
           if (isMobile && e.pointerType === 'touch') {
+            e.stopPropagation()
+            const current = touchStartRef.current
+
+            if (current) {
+              const dt = performance.now() - current.time
+              const dx = e.clientX - current.x
+              const dy = e.clientY - current.y
+              const distance = Math.sqrt(dx * dx + dy * dy)
+
+              // Считаем «кликом» только очень короткий и почти неподвижный тап
+              const MAX_TAP_DURATION = 220
+              const MAX_TAP_MOVE = 8
+
+              if (dt <= MAX_TAP_DURATION && distance <= MAX_TAP_MOVE) {
+                if (document.pointerLockElement) {
+                  document.exitPointerLock()
+                }
+                setTimeout(() => {
+                  onClick()
+                }, 100)
+              }
+            }
+          }
+        }}
+        onPointerDown={(e) => {
+          if (isMobile && e.pointerType === 'touch') {
+            // запоминаем позицию и время касания для отличия тапа от свайпа
+            touchStartRef.current = {
+              x: e.clientX,
+              y: e.clientY,
+              time: performance.now(),
+            }
+          } else {
+            // десктоп / не touch — используем обычный клик как раньше
             e.stopPropagation()
             if (document.pointerLockElement) {
               document.exitPointerLock()
