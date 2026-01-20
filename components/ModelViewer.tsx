@@ -16,11 +16,21 @@ function Model({
   modelPath: string
   onModelLoaded?: (center: [number, number, number], size: [number, number, number]) => void
 }) {
-  const { scene } = useGLTF(modelPath) as { scene: THREE.Group }
+  const [hasError, setHasError] = useState(false)
+  let scene: THREE.Group | null = null
+  
+  try {
+    const gltf = useGLTF(modelPath) as { scene: THREE.Group }
+    scene = gltf.scene
+  } catch (error) {
+    console.warn('Ошибка загрузки модели:', modelPath, error)
+    setHasError(true)
+  }
+  
   const meshRef = useRef<THREE.Group>(null)
 
   const { processedScene, modelCenter, modelSize } = useMemo(() => {
-    if (!scene) return { processedScene: null, modelCenter: [0, 0, 0] as [number, number, number], modelSize: [0, 0, 0] as [number, number, number] }
+    if (hasError || !scene) return { processedScene: null, modelCenter: [0, 0, 0] as [number, number, number], modelSize: [0, 0, 0] as [number, number, number] }
 
     const clonedScene = scene.clone()
     
@@ -55,7 +65,7 @@ function Model({
     }
   }, [processedScene, modelCenter, modelSize, onModelLoaded])
 
-  if (!processedScene) {
+  if (hasError || !processedScene) {
     return (
       <mesh>
         <boxGeometry args={[1, 1, 1]} />

@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useRef, useMemo } from 'react'
+import React, { Suspense, useRef, useMemo, useState, useEffect } from 'react'
 import { useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
 
@@ -8,17 +8,31 @@ interface SafeModelProps {
   modelPath: string
 }
 
-// Компонент для загрузки модели с правильным масштабированием
 function ModelLoader({ modelPath }: { modelPath: string }) {
   const groupRef = useRef<THREE.Group>(null)
+  const [hasError, setHasError] = useState(false)
   
-  // useGLTF должен быть вызван безусловно (правило хуков React)
-  const { scene } = useGLTF(modelPath) as { scene: THREE.Group }
+  let scene: THREE.Group | null = null
+  try {
+    const gltf = useGLTF(modelPath, true) as { scene: THREE.Group }
+    scene = gltf.scene
+  } catch (error) {
+    console.warn('Ошибка загрузки модели:', modelPath, error)
+    setHasError(true)
+  }
 
-  // Автоматическое масштабирование и центрирование модели
-  // Используем useMemo для стабильности - обрабатываем только один раз
+  useEffect(() => {
+    const handleError = (event: ErrorEvent) => {
+      if (event.message?.includes(modelPath) || event.filename?.includes(modelPath)) {
+        setHasError(true)
+      }
+    }
+    window.addEventListener('error', handleError)
+    return () => window.removeEventListener('error', handleError)
+  }, [modelPath])
+
   const processedScene = useMemo(() => {
-    if (!scene) return null
+    if (hasError || !scene) return null
 
     // Клонируем сцену, чтобы не изменять оригинал
     const clonedScene = scene.clone()
@@ -53,7 +67,7 @@ function ModelLoader({ modelPath }: { modelPath: string }) {
     return clonedScene
   }, [scene])
 
-  if (!processedScene) {
+  if (hasError || !processedScene) {
     return (
       <mesh>
         <boxGeometry args={[1, 1, 1]} />
@@ -81,7 +95,39 @@ export default function SafeModelWrapper({ modelPath }: SafeModelProps) {
         </mesh>
       }
     >
-      <ModelLoader modelPath={modelPath} />
+      <ErrorBoundary fallback={
+        <mesh>
+          <boxGeometry args={[1, 1, 1]} />
+          <meshStandardMaterial color="#d1d5db" />
+        </mesh>
+      }>
+        <ModelLoader modelPath={modelPath} />
+      </ErrorBoundary>
     </Suspense>
   )
+}
+
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode; fallback: React.ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: { children: React.ReactNode; fallback: React.ReactNode }) {
+    super(props)
+    this.state = { hasError: false }
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true }
+  }
+
+  componentDidCatch(error: Error) {
+    console.warn('Ошибка загрузки модели:', error.message)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback
+    }
+    return this.props.children
+  }
 }

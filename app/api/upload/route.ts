@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { writeFile } from 'fs/promises'
+import { open, close } from 'fs/promises'
 import path from 'path'
 import { existsSync, mkdirSync } from 'fs'
 
@@ -40,6 +41,15 @@ export async function POST(request: NextRequest) {
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
     await writeFile(filePath, buffer)
+
+    // Принудительно синхронизируем запись на диск (fsync)
+    try {
+      const fd = await open(filePath, 'r+')
+      await fd.sync()
+      await fd.close()
+    } catch (syncError) {
+      console.warn('Не удалось синхронизировать файл на диск:', syncError)
+    }
 
     // Проверяем, что файл действительно создан
     if (!existsSync(filePath)) {
