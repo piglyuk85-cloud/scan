@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 
 interface MobileControlsProps {
   onMove: (direction: 'forward' | 'backward' | 'left' | 'right', active: boolean) => void
@@ -55,23 +55,7 @@ export default function MobileControls({ onMove, onLook }: MobileControlsProps) 
     }
   }, [gyroEnabled, isMobile, onLook])
 
-  if (!isMobile) {
-    return null
-  }
-
-  const handleTouchStart = (e: React.TouchEvent, direction: 'forward' | 'backward' | 'left' | 'right') => {
-    e.preventDefault()
-    setIsTouchActive(true)
-    onMove(direction, true)
-  }
-
-  const handleTouchEnd = (e: React.TouchEvent, direction: 'forward' | 'backward' | 'left' | 'right') => {
-    e.preventDefault()
-    setIsTouchActive(false)
-    onMove(direction, false)
-  }
-
-  const applyLookDelta = () => {
+  const applyLookDelta = useCallback(() => {
     if (accumulatedDeltaRef.current.x !== 0 || accumulatedDeltaRef.current.y !== 0) {
       const sensitivity = 1.8
       onLook(
@@ -86,9 +70,9 @@ export default function MobileControls({ onMove, onLook }: MobileControlsProps) 
     } else {
       animationFrameRef.current = null
     }
-  }
+  }, [onLook])
 
-  const handleLookTouchStart = (e: React.TouchEvent) => {
+  const handleLookTouchStart = useCallback((e: React.TouchEvent) => {
     if (e.touches.length === 0) return
     
     const touch = e.touches[0]
@@ -121,9 +105,9 @@ export default function MobileControls({ onMove, onLook }: MobileControlsProps) 
     if (animationFrameRef.current === null) {
       animationFrameRef.current = requestAnimationFrame(applyLookDelta)
     }
-  }
+  }, [applyLookDelta])
 
-  const handleLookTouchMove = (e: React.TouchEvent) => {
+  const handleLookTouchMove = useCallback((e: React.TouchEvent) => {
     if (activeTouchIdRef.current === null || lookTouchRef.current === null) {
       return
     }
@@ -187,9 +171,9 @@ export default function MobileControls({ onMove, onLook }: MobileControlsProps) 
         }
       }
     }
-  }
+  }, [applyLookDelta])
 
-  const handleLookTouchEnd = (e: React.TouchEvent) => {
+  const handleLookTouchEnd = useCallback((e: React.TouchEvent) => {
     if (activeTouchIdRef.current !== null) {
       const endedTouch = Array.from(e.changedTouches).find(
         t => t.identifier === activeTouchIdRef.current
@@ -221,9 +205,9 @@ export default function MobileControls({ onMove, onLook }: MobileControlsProps) 
         }
       }
     }
-  }
+  }, [onLook])
 
-  const handleLookTouchCancel = (e: React.TouchEvent) => {
+  const handleLookTouchCancel = useCallback((e: React.TouchEvent) => {
     if (activeTouchIdRef.current !== null) {
       const cancelledTouch = Array.from(e.changedTouches).find(
         t => t.identifier === activeTouchIdRef.current
@@ -240,7 +224,7 @@ export default function MobileControls({ onMove, onLook }: MobileControlsProps) 
         }
       }
     }
-  }
+  }, [])
 
   useEffect(() => {
     if (!isMobile) return
@@ -323,7 +307,23 @@ export default function MobileControls({ onMove, onLook }: MobileControlsProps) 
       canvas.removeEventListener('touchend', handleCanvasTouchEnd)
       canvas.removeEventListener('touchcancel', handleCanvasTouchCancel)
     }
-  }, [isMobile])
+  }, [isMobile, handleLookTouchStart, handleLookTouchMove, handleLookTouchEnd, handleLookTouchCancel])
+
+  if (!isMobile) {
+    return null
+  }
+
+  const handleTouchStart = (e: React.TouchEvent, direction: 'forward' | 'backward' | 'left' | 'right') => {
+    e.preventDefault()
+    setIsTouchActive(true)
+    onMove(direction, true)
+  }
+
+  const handleTouchEnd = (e: React.TouchEvent, direction: 'forward' | 'backward' | 'left' | 'right') => {
+    e.preventDefault()
+    setIsTouchActive(false)
+    onMove(direction, false)
+  }
 
   return (
     <>
