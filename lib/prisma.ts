@@ -1,5 +1,13 @@
 import { PrismaClient } from '@prisma/client'
 
+try {
+  if (!process.env.DATABASE_URL && typeof require !== 'undefined') {
+    require('dotenv').config()
+  }
+} catch (e) {
+  // dotenv не установлен или не нужен
+}
+
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
 }
