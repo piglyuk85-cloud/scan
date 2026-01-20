@@ -43,23 +43,21 @@ function ContextCleanup() {
 }
 
 function ModelPreview({ modelPath }: { modelPath: string }) {
-  let scene: THREE.Group | null = null
+  const [hasError, setHasError] = useState(false)
   
+  let scene: THREE.Group | null = null
   try {
     const gltf = useGLTF(modelPath) as { scene: THREE.Group }
     scene = gltf.scene
   } catch (error) {
-    console.warn('Ошибка загрузки модели:', modelPath, error)
-    return (
-      <mesh>
-        <boxGeometry args={[1, 1, 1]} />
-        <meshStandardMaterial color="#d1d5db" />
-      </mesh>
-    )
+    if (!hasError) {
+      console.warn('Ошибка загрузки модели:', modelPath, error)
+      setHasError(true)
+    }
   }
 
   const processedScene = useMemo(() => {
-    if (!scene) return null
+    if (hasError || !scene) return null
 
     try {
       const cloned = scene.clone()
@@ -85,9 +83,9 @@ function ModelPreview({ modelPath }: { modelPath: string }) {
       console.warn('Ошибка обработки модели:', error)
       return null
     }
-  }, [scene])
+  }, [scene, hasError])
 
-  if (!processedScene) {
+  if (hasError || !processedScene) {
     return (
       <mesh>
         <boxGeometry args={[1, 1, 1]} />
