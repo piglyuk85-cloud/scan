@@ -7,6 +7,8 @@ import { getPageContent } from '@/lib/pageContent'
 
 const inter = Inter({ subsets: ['latin', 'cyrillic'] })
 
+export const dynamic = 'force-dynamic'
+
 export async function generateMetadata(): Promise<Metadata> {
   const pageContent = await getPageContent()
   return {

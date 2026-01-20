@@ -1,5 +1,7 @@
 import { getPageContent } from '@/lib/pageContent'
 
+export const dynamic = 'force-dynamic'
+
 export default async function AboutPage() {
   const pageContent = await getPageContent()
 

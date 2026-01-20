@@ -14,13 +14,6 @@ interface PageProps {
   }
 }
 
-export async function generateStaticParams() {
-  const exhibits = await getExhibits(false)
-  return exhibits.map((exhibit) => ({
-    id: exhibit.id,
-  }))
-}
-
 export default async function ExhibitPage({ params }: PageProps) {
   let isAdmin = false
   let adminRole = 'admin'

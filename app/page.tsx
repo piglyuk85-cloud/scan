@@ -3,6 +3,8 @@ import { getExhibits } from '@/lib/exhibits'
 import { getPageContent } from '@/lib/pageContent'
 import ExhibitCard from '@/components/ExhibitCard'
 
+export const dynamic = 'force-dynamic'
+
 export default async function Home() {
   const exhibits = await getExhibits(false)
   const featuredExhibits = exhibits.slice(0, 6)
