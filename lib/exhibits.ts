@@ -75,14 +75,6 @@ export async function getExhibitsByCategory(category: string): Promise<Exhibit[]
 export async function searchExhibits(query: string): Promise<Exhibit[]> {
   const lowerQuery = query.toLowerCase()
   const exhibits = await prisma.exhibit.findMany({
-    where: {
-      OR: [
-        { title: { contains: query, mode: 'insensitive' } },
-        { description: { contains: query, mode: 'insensitive' } },
-        { category: { contains: query, mode: 'insensitive' } },
-        { studentName: { contains: query, mode: 'insensitive' } },
-      ],
-    },
     orderBy: { createdAt: 'desc' },
   })
 
