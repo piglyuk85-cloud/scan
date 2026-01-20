@@ -37,7 +37,7 @@ export default function PageContentEditor({ onSave }: PageContentEditorProps) {
     setSaving(true)
     try {
       const response = await fetch('/api/page-content', {
-        method: 'PUT',
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -309,7 +309,21 @@ function AboutPageEditor({
     <div className="space-y-6">
       {/* О проекте */}
       <div className="bg-gray-50 rounded-lg p-6">
-        <h3 className="text-lg font-semibold mb-4">{content.project.title}</h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold">{content.project.title || 'О проекте'}</h3>
+          <button
+            type="button"
+            onClick={() => {
+              updateContent(['about', 'project'], {
+                title: '',
+                paragraphs: [''],
+              })
+            }}
+            className="text-xs text-red-600 hover:text-red-700"
+          >
+            Очистить блок
+          </button>
+        </div>
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -323,7 +337,7 @@ function AboutPageEditor({
             />
           </div>
           {content.project.paragraphs.map((para, idx) => (
-            <div key={idx}>
+            <div key={idx} className="space-y-1">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Абзац {idx + 1}
               </label>
@@ -337,6 +351,18 @@ function AboutPageEditor({
                 rows={3}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
               />
+              {content.project.paragraphs.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newParagraphs = content.project.paragraphs.filter((_, i) => i !== idx)
+                    updateContent(['about', 'project', 'paragraphs'], newParagraphs)
+                  }}
+                  className="text-xs text-red-600 hover:text-red-700"
+                >
+                  Удалить абзац
+                </button>
+              )}
             </div>
           ))}
           <button
@@ -354,7 +380,21 @@ function AboutPageEditor({
 
       {/* ВГУ */}
       <div className="bg-gray-50 rounded-lg p-6">
-        <h3 className="text-lg font-semibold mb-4">{content.university.title}</h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold">{content.university.title || 'ВГУ'}</h3>
+          <button
+            type="button"
+            onClick={() => {
+              updateContent(['about', 'university'], {
+                title: '',
+                paragraphs: [''],
+              })
+            }}
+            className="text-xs text-red-600 hover:text-red-700"
+          >
+            Очистить блок
+          </button>
+        </div>
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -368,7 +408,7 @@ function AboutPageEditor({
             />
           </div>
           {content.university.paragraphs.map((para, idx) => (
-            <div key={idx}>
+            <div key={idx} className="space-y-1">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Абзац {idx + 1}
               </label>
@@ -382,6 +422,18 @@ function AboutPageEditor({
                 rows={3}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
               />
+              {content.university.paragraphs.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newParagraphs = content.university.paragraphs.filter((_, i) => i !== idx)
+                    updateContent(['about', 'university', 'paragraphs'], newParagraphs)
+                  }}
+                  className="text-xs text-red-600 hover:text-red-700"
+                >
+                  Удалить абзац
+                </button>
+              )}
             </div>
           ))}
           <button
