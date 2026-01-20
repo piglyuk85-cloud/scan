@@ -6,6 +6,8 @@ import Link from 'next/link'
 import ModelViewer from '@/components/ModelViewer'
 import QRCodeDisplay from '@/components/QRCodeDisplay'
 
+export const dynamic = 'force-dynamic'
+
 interface PageProps {
   params: {
     id: string
@@ -20,9 +22,17 @@ export async function generateStaticParams() {
 }
 
 export default async function ExhibitPage({ params }: PageProps) {
-  const cookieStore = await cookies()
-  const isAdmin = cookieStore.get('admin_auth')?.value === 'true'
-  const adminRole = cookieStore.get('admin_role')?.value || 'admin'
+  let isAdmin = false
+  let adminRole = 'admin'
+  
+  try {
+    const cookieStore = await cookies()
+    isAdmin = cookieStore.get('admin_auth')?.value === 'true'
+    adminRole = cookieStore.get('admin_role')?.value || 'admin'
+  } catch (error) {
+    // Если cookies недоступны (например, при статической генерации), используем значения по умолчанию
+    console.warn('Не удалось получить cookies:', error)
+  }
   
   const exhibit = await getExhibitById(params.id, isAdmin)
 
