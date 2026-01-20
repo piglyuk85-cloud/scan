@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo, useEffect } from 'react'
-import { type Exhibit } from '@/lib/exhibits'
+import type { Exhibit } from '@/types/exhibit'
 import ExhibitCard from '@/components/ExhibitCard'
 import { PageContent } from '@/types/pageContent'
 
