@@ -119,6 +119,17 @@ function ExhibitInSpace({
             onClick()
           }, 100)
         }}
+        onPointerUp={(e) => {
+          if (isMobile && e.pointerType === 'touch') {
+            e.stopPropagation()
+            if (document.pointerLockElement) {
+              document.exitPointerLock()
+            }
+            setTimeout(() => {
+              onClick()
+            }, 100)
+          }
+        }}
       >
         <boxGeometry args={[3, 3, 3]} />
         <meshStandardMaterial 

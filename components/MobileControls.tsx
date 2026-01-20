@@ -16,6 +16,8 @@ export default function MobileControls({ onMove, onLook }: MobileControlsProps) 
   const activeTouchIdRef = useRef<number | null>(null)
   const accumulatedDeltaRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
   const animationFrameRef = useRef<number | null>(null)
+  const touchStartTimeRef = useRef<number | null>(null)
+  const touchStartPosRef = useRef<{ x: number; y: number } | null>(null)
 
   const isMobile = typeof window !== 'undefined' && 
     ('ontouchstart' in window || navigator.maxTouchPoints > 0)
@@ -93,18 +95,32 @@ export default function MobileControls({ onMove, onLook }: MobileControlsProps) 
     
     if (activeTouchIdRef.current !== null) return
     
+    const buttonAreaLeft = 16
+    const buttonAreaBottom = 16
+    const buttonAreaSize = 180
+    const screenHeight = window.innerHeight
+    const buttonAreaTop = screenHeight - buttonAreaBottom - buttonAreaSize
+    
+    const isInButtonArea = 
+      touch.clientX >= buttonAreaLeft && 
+      touch.clientX <= buttonAreaLeft + buttonAreaSize &&
+      touch.clientY >= buttonAreaTop && 
+      touch.clientY <= screenHeight - buttonAreaBottom
+    
+    if (isInButtonArea) return
+    
     activeTouchIdRef.current = touch.identifier
     lookTouchRef.current = { 
       x: touch.clientX, 
       y: touch.clientY,
       touchId: touch.identifier
     }
+    touchStartTimeRef.current = Date.now()
+    touchStartPosRef.current = { x: touch.clientX, y: touch.clientY }
     accumulatedDeltaRef.current = { x: 0, y: 0 }
     if (animationFrameRef.current === null) {
       animationFrameRef.current = requestAnimationFrame(applyLookDelta)
     }
-    e.preventDefault()
-    e.stopPropagation()
   }
 
   const handleLookTouchMove = (e: React.TouchEvent) => {
@@ -139,31 +155,37 @@ export default function MobileControls({ onMove, onLook }: MobileControlsProps) 
           y: touch.clientY,
           touchId: touch.identifier
         }
+        touchStartTimeRef.current = Date.now()
+        touchStartPosRef.current = { x: touch.clientX, y: touch.clientY }
         accumulatedDeltaRef.current = { x: 0, y: 0 }
       } else {
         return
       }
     }
     
-    if (touch && lookTouchRef.current) {
-      const deltaX = touch.clientX - lookTouchRef.current.x
-      const deltaY = touch.clientY - lookTouchRef.current.y
+    if (touch && lookTouchRef.current && touchStartPosRef.current) {
+      const moveDistance = Math.sqrt(
+        Math.pow(touch.clientX - touchStartPosRef.current.x, 2) +
+        Math.pow(touch.clientY - touchStartPosRef.current.y, 2)
+      )
       
-      accumulatedDeltaRef.current.x += deltaX
-      accumulatedDeltaRef.current.y += deltaY
-      
-      lookTouchRef.current = { 
-        x: touch.clientX, 
-        y: touch.clientY,
-        touchId: touch.identifier
+      if (moveDistance > 5) {
+        const deltaX = touch.clientX - lookTouchRef.current.x
+        const deltaY = touch.clientY - lookTouchRef.current.y
+        
+        accumulatedDeltaRef.current.x += deltaX
+        accumulatedDeltaRef.current.y += deltaY
+        
+        lookTouchRef.current = { 
+          x: touch.clientX, 
+          y: touch.clientY,
+          touchId: touch.identifier
+        }
+        
+        if (animationFrameRef.current === null) {
+          animationFrameRef.current = requestAnimationFrame(applyLookDelta)
+        }
       }
-      
-      if (animationFrameRef.current === null) {
-        animationFrameRef.current = requestAnimationFrame(applyLookDelta)
-      }
-      
-      e.preventDefault()
-      e.stopPropagation()
     }
   }
 
@@ -172,16 +194,26 @@ export default function MobileControls({ onMove, onLook }: MobileControlsProps) 
       const endedTouch = Array.from(e.changedTouches).find(
         t => t.identifier === activeTouchIdRef.current
       )
-      if (endedTouch) {
-        if (accumulatedDeltaRef.current.x !== 0 || accumulatedDeltaRef.current.y !== 0) {
-          const sensitivity = 1.8
-          onLook(
-            accumulatedDeltaRef.current.x * sensitivity,
-            accumulatedDeltaRef.current.y * sensitivity
-          )
+      if (endedTouch && touchStartTimeRef.current && touchStartPosRef.current) {
+        const touchDuration = Date.now() - touchStartTimeRef.current
+        const moveDistance = Math.sqrt(
+          Math.pow(endedTouch.clientX - touchStartPosRef.current.x, 2) +
+          Math.pow(endedTouch.clientY - touchStartPosRef.current.y, 2)
+        )
+        
+        if (moveDistance > 5 || touchDuration > 100) {
+          if (accumulatedDeltaRef.current.x !== 0 || accumulatedDeltaRef.current.y !== 0) {
+            const sensitivity = 1.8
+            onLook(
+              accumulatedDeltaRef.current.x * sensitivity,
+              accumulatedDeltaRef.current.y * sensitivity
+            )
+          }
         }
         lookTouchRef.current = null
         activeTouchIdRef.current = null
+        touchStartTimeRef.current = null
+        touchStartPosRef.current = null
         accumulatedDeltaRef.current = { x: 0, y: 0 }
         if (animationFrameRef.current !== null) {
           cancelAnimationFrame(animationFrameRef.current)
@@ -199,6 +231,8 @@ export default function MobileControls({ onMove, onLook }: MobileControlsProps) 
       if (cancelledTouch) {
         lookTouchRef.current = null
         activeTouchIdRef.current = null
+        touchStartTimeRef.current = null
+        touchStartPosRef.current = null
         accumulatedDeltaRef.current = { x: 0, y: 0 }
         if (animationFrameRef.current !== null) {
           cancelAnimationFrame(animationFrameRef.current)
@@ -208,70 +242,91 @@ export default function MobileControls({ onMove, onLook }: MobileControlsProps) 
     }
   }
 
+  useEffect(() => {
+    if (!isMobile) return
+
+    const canvas = document.querySelector('canvas')
+    if (!canvas) return
+
+    const handleCanvasTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 0) return
+      
+      const touch = e.touches[0]
+      
+      const buttonAreaLeft = 16
+      const buttonAreaBottom = 16
+      const buttonAreaSize = 180
+      const screenHeight = window.innerHeight
+      const buttonAreaTop = screenHeight - buttonAreaBottom - buttonAreaSize
+      
+      const isInButtonArea = 
+        touch.clientX >= buttonAreaLeft && 
+        touch.clientX <= buttonAreaLeft + buttonAreaSize &&
+        touch.clientY >= buttonAreaTop && 
+        touch.clientY <= screenHeight - buttonAreaBottom
+      
+      if (!isInButtonArea && activeTouchIdRef.current === null) {
+        const syntheticEvent = {
+          touches: e.touches,
+          preventDefault: () => {},
+          stopPropagation: () => {},
+        } as unknown as React.TouchEvent
+        
+        handleLookTouchStart(syntheticEvent)
+      }
+    }
+
+    const handleCanvasTouchMove = (e: TouchEvent) => {
+      if (activeTouchIdRef.current !== null) {
+        const syntheticEvent = {
+          touches: e.touches,
+          preventDefault: () => {},
+          stopPropagation: () => {},
+        } as unknown as React.TouchEvent
+        
+        handleLookTouchMove(syntheticEvent)
+      }
+    }
+
+    const handleCanvasTouchEnd = (e: TouchEvent) => {
+      if (activeTouchIdRef.current !== null) {
+        const syntheticEvent = {
+          changedTouches: e.changedTouches,
+          preventDefault: () => {},
+          stopPropagation: () => {},
+        } as unknown as React.TouchEvent
+        
+        handleLookTouchEnd(syntheticEvent)
+      }
+    }
+
+    const handleCanvasTouchCancel = (e: TouchEvent) => {
+      if (activeTouchIdRef.current !== null) {
+        const syntheticEvent = {
+          changedTouches: e.changedTouches,
+          preventDefault: () => {},
+          stopPropagation: () => {},
+        } as unknown as React.TouchEvent
+        
+        handleLookTouchCancel(syntheticEvent)
+      }
+    }
+
+    canvas.addEventListener('touchstart', handleCanvasTouchStart, { passive: true })
+    canvas.addEventListener('touchmove', handleCanvasTouchMove, { passive: true })
+    canvas.addEventListener('touchend', handleCanvasTouchEnd, { passive: true })
+    canvas.addEventListener('touchcancel', handleCanvasTouchCancel, { passive: true })
+
+    return () => {
+      canvas.removeEventListener('touchstart', handleCanvasTouchStart)
+      canvas.removeEventListener('touchmove', handleCanvasTouchMove)
+      canvas.removeEventListener('touchend', handleCanvasTouchEnd)
+      canvas.removeEventListener('touchcancel', handleCanvasTouchCancel)
+    }
+  }, [isMobile])
+
   return (
     <>
-      <div
-        className="absolute top-0 left-0 right-0 bottom-0 z-10 touch-none pointer-events-auto"
-        style={{ 
-          touchAction: 'none',
-          WebkitTouchCallout: 'none',
-          WebkitUserSelect: 'none',
-          userSelect: 'none',
-          WebkitTapHighlightColor: 'transparent',
-        }}
-        onTouchStart={(e) => {
-          const touch = e.touches[0]
-          if (!touch) return
-          
-          const buttonAreaLeft = 16
-          const buttonAreaBottom = 16
-          const buttonAreaSize = 180
-          const screenHeight = window.innerHeight
-          const buttonAreaTop = screenHeight - buttonAreaBottom - buttonAreaSize
-          
-          const isInButtonArea = 
-            touch.clientX >= buttonAreaLeft && 
-            touch.clientX <= buttonAreaLeft + buttonAreaSize &&
-            touch.clientY >= buttonAreaTop && 
-            touch.clientY <= screenHeight - buttonAreaBottom
-          
-          if (!isInButtonArea) {
-            handleLookTouchStart(e)
-          }
-        }}
-        onTouchMove={(e) => {
-          if (e.touches.length > 0) {
-            const buttonAreaLeft = 16
-            const buttonAreaBottom = 16
-            const buttonAreaSize = 180
-            const screenHeight = window.innerHeight
-            const buttonAreaTop = screenHeight - buttonAreaBottom - buttonAreaSize
-            
-            if (activeTouchIdRef.current !== null) {
-              handleLookTouchMove(e)
-            } else {
-              const touchOutsideButtons = Array.from(e.touches).find(t => {
-                const isInButtonArea = 
-                  t.clientX >= buttonAreaLeft && 
-                  t.clientX <= buttonAreaLeft + buttonAreaSize &&
-                  t.clientY >= buttonAreaTop && 
-                  t.clientY <= screenHeight - buttonAreaBottom
-                return !isInButtonArea
-              })
-              
-              if (touchOutsideButtons) {
-                handleLookTouchStart(e)
-              }
-            }
-          }
-        }}
-        onTouchEnd={(e) => {
-          handleLookTouchEnd(e)
-        }}
-        onTouchCancel={(e) => {
-          handleLookTouchCancel(e)
-        }}
-      />
 
       <div className="absolute bottom-4 left-4 z-20">
         <div className="grid grid-cols-3 gap-1.5">
