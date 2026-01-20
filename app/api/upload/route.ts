@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
     // Определяем папку назначения
     const uploadDir =
       type === 'model'
-        ? path.join(process.cwd(), 'public', 'models')
+        ? path.join(process.cwd(), 'storage', 'models')
         : path.join(process.cwd(), 'public', 'images')
 
     // Создаем папку если её нет
@@ -61,11 +61,11 @@ export async function POST(request: NextRequest) {
 
     // Базовый путь относительно public
     const basePublicPath =
-      type === 'model' ? `/models/${fileName}` : `/images/${fileName}`
+      type === 'model'
+        ? `/api/storage/models/${fileName}`
+        : `/images/${fileName}`
 
-    // Для моделей добавляем query-параметр, чтобы обойти возможный кэш 404 в браузере
-    const publicPath =
-      type === 'model' ? `${basePublicPath}?v=${timestamp}` : basePublicPath
+    const publicPath = basePublicPath
 
     console.log('Файл успешно загружен:', {
       originalName: file.name,
