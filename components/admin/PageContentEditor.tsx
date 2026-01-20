@@ -45,14 +45,17 @@ export default function PageContentEditor({ onSave }: PageContentEditorProps) {
       })
 
       if (response.ok) {
+        const result = await response.json()
         alert('Контент сохранен успешно!')
         onSave()
       } else {
-        alert('Ошибка при сохранении контента')
+        const error = await response.json()
+        console.error('Ошибка API:', error)
+        alert(error.error || 'Ошибка при сохранении контента')
       }
     } catch (error) {
       console.error('Ошибка сохранения:', error)
-      alert('Ошибка при сохранении контента')
+      alert('Ошибка при сохранении контента. Проверьте консоль для деталей.')
     } finally {
       setSaving(false)
     }
@@ -146,7 +149,6 @@ export default function PageContentEditor({ onSave }: PageContentEditorProps) {
   )
 }
 
-// Компонент для редактирования главной страницы
 function HomePageEditor({
   content,
   updateContent,
@@ -252,11 +254,50 @@ function HomePageEditor({
           ))}
         </div>
       </div>
+
+      <div className="bg-gray-50 rounded-lg p-6">
+        <h3 className="text-lg font-semibold mb-4">Кнопки и ссылки</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {content.buttons && Object.entries(content.buttons).map(([key, value]) => (
+            <div key={key}>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                {key === 'catalog' && 'Каталог работ'}
+                {key === 'virtualGallery' && 'Виртуальная галерея'}
+                {key === 'about' && 'О галерее'}
+                {key === 'viewAll' && 'Смотреть все'}
+                {key === 'learnMore' && 'Узнать больше'}
+              </label>
+              <input
+                type="text"
+                value={value || ''}
+                onChange={(e) => updateContent(['home', 'buttons', key], e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-gray-50 rounded-lg p-6">
+        <h3 className="text-lg font-semibold mb-4">Заголовки секций</h3>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Популярные работы
+            </label>
+            <input
+              type="text"
+              value={content.sections?.popularWorks || ''}
+              onChange={(e) => updateContent(['home', 'sections', 'popularWorks'], e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+            />
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
 
-// Компонент для редактирования страницы "О галерее"
 function AboutPageEditor({
   content,
   updateContent,
@@ -584,7 +625,6 @@ function AboutPageEditor({
   )
 }
 
-// Компонент для редактирования настроек сайта
 function SettingsEditor({
   content,
   updateContent,
@@ -623,6 +663,106 @@ function SettingsEditor({
       </div>
 
       <div className="bg-gray-50 rounded-lg p-6">
+        <h3 className="text-lg font-semibold mb-4">Навигация</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {content.navigation && Object.entries(content.navigation).map(([key, value]) => (
+            <div key={key}>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                {key === 'home' && 'Главная'}
+                {key === 'catalog' && 'Каталог'}
+                {key === 'virtualGallery' && 'Виртуальная галерея'}
+                {key === 'about' && 'О галерее'}
+              </label>
+              <input
+                type="text"
+                value={value || ''}
+                onChange={(e) => updateContent(['settings', 'navigation', key], e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-gray-50 rounded-lg p-6">
+        <h3 className="text-lg font-semibold mb-4">Каталог</h3>
+        <div className="space-y-4">
+          {content.catalog && Object.entries(content.catalog).map(([key, value]) => (
+            <div key={key}>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                {key === 'title' && 'Заголовок страницы'}
+                {key === 'searchPlaceholder' && 'Плейсхолдер поиска'}
+                {key === 'searchLabel' && 'Метка поля поиска'}
+                {key === 'categoryLabel' && 'Метка категории'}
+                {key === 'yearLabel' && 'Метка года'}
+                {key === 'allCategories' && 'Все категории'}
+                {key === 'allYears' && 'Все годы'}
+                {key === 'only3D' && 'Только с 3D моделями'}
+                {key === 'foundWorks' && 'Найдено работ'}
+                {key === 'noWorksFound' && 'Работы не найдены'}
+                {key === 'tryDifferentFilters' && 'Подсказка при отсутствии результатов'}
+              </label>
+              {key === 'searchPlaceholder' || key === 'tryDifferentFilters' ? (
+                <textarea
+                  value={value || ''}
+                  onChange={(e) => updateContent(['settings', 'catalog', key], e.target.value)}
+                  rows={2}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                />
+              ) : (
+                <input
+                  type="text"
+                  value={value || ''}
+                  onChange={(e) => updateContent(['settings', 'catalog', key], e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                />
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-gray-50 rounded-lg p-6">
+        <h3 className="text-lg font-semibold mb-4">Страница экспоната</h3>
+        <div className="space-y-4">
+          {content.exhibit && Object.entries(content.exhibit).map(([key, value]) => (
+            <div key={key}>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                {key === 'backToCatalog' && 'Вернуться в каталог'}
+                {key === 'editButton' && 'Кнопка редактирования'}
+                {key === 'model3D' && '3D Модель'}
+                {key === 'description' && 'Описание'}
+                {key === 'aboutAuthor' && 'Об авторе'}
+                {key === 'additionalInfo' && 'Дополнительная информация'}
+                {key === 'creationInfo' && 'Информация о создании'}
+                {key === 'technicalSpecs' && 'Технические характеристики'}
+                {key === 'interestingFacts' && 'Интересные факты'}
+                {key === 'qrCode' && 'QR-код'}
+                {key === 'qrCodeDescription' && 'Описание QR-кода'}
+                {key === 'navigation' && 'Навигация'}
+                {key === 'previous' && 'Предыдущий'}
+                {key === 'next' && 'Следующий'}
+                {key === 'creationDate' && 'Дата создания'}
+                {key === 'dimensions' && 'Размеры'}
+                {key === 'location' && 'Местонахождение'}
+                {key === 'inventoryNumber' && 'Инвентарный номер'}
+                {key === 'author' && 'Автор/мастер'}
+                {key === 'course' && 'Курс'}
+                {key === 'group' && 'Группа'}
+                {key === 'supervisor' && 'Научный руководитель'}
+              </label>
+              <input
+                type="text"
+                value={value || ''}
+                onChange={(e) => updateContent(['settings', 'exhibit', key], e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-gray-50 rounded-lg p-6">
         <h3 className="text-lg font-semibold mb-4">Футер</h3>
         <div className="space-y-4">
           <div>
@@ -645,6 +785,40 @@ function SettingsEditor({
               value={content.footer.copyright}
               onChange={(e) => updateContent(['settings', 'footer', 'copyright'], e.target.value)}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Заголовок навигации
+            </label>
+            <input
+              type="text"
+              value={content.footer.navigationTitle || ''}
+              onChange={(e) => updateContent(['settings', 'footer', 'navigationTitle'], e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Заголовок контактов
+            </label>
+            <input
+              type="text"
+              value={content.footer.contactsTitle || ''}
+              onChange={(e) => updateContent(['settings', 'footer', 'contactsTitle'], e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Адрес контактов
+            </label>
+            <textarea
+              value={content.footer.contactsAddress || ''}
+              onChange={(e) => updateContent(['settings', 'footer', 'contactsAddress'], e.target.value)}
+              rows={3}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+              placeholder="Каждая строка - отдельная строка адреса"
             />
           </div>
           <div>

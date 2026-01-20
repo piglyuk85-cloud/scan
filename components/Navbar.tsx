@@ -20,12 +20,31 @@ export default function Navbar() {
       .catch(() => {})
   }, [])
 
-  const navLinks = [
+  const [navLinks, setNavLinks] = useState([
     { href: '/', label: 'Главная' },
     { href: '/catalog', label: 'Каталог' },
     { href: '/gallery', label: 'Виртуальная галерея' },
     { href: '/about', label: 'О галерее' },
-  ]
+  ])
+
+  useEffect(() => {
+    fetch('/api/page-content')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.settings?.siteName) {
+          setSiteName(data.settings.siteName)
+        }
+        if (data?.settings?.navigation) {
+          setNavLinks([
+            { href: '/', label: data.settings.navigation.home },
+            { href: '/catalog', label: data.settings.navigation.catalog },
+            { href: '/gallery', label: data.settings.navigation.virtualGallery },
+            { href: '/about', label: data.settings.navigation.about },
+          ])
+        }
+      })
+      .catch(() => {})
+  }, [])
 
   return (
     <nav className="bg-white shadow-md sticky top-0 z-50">

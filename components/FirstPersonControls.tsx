@@ -7,11 +7,19 @@ import * as THREE from 'three'
 interface FirstPersonControlsProps {
   onMobileMove?: (direction: 'forward' | 'backward' | 'left' | 'right', active: boolean) => void
   onMobileLook?: (deltaX: number, deltaY: number) => void
+  bounds?: {
+    minX: number
+    maxX: number
+    minZ: number
+    maxZ: number
+    minY: number
+    maxY: number
+  }
 }
 
-const PI_2 = Math.PI / 2 // Константа вне компонента
+const PI_2 = Math.PI / 2
 
-export default function FirstPersonControls({ onMobileMove, onMobileLook }: FirstPersonControlsProps = {}) {
+export default function FirstPersonControls({ onMobileMove, onMobileLook, bounds }: FirstPersonControlsProps = {}) {
   const { camera, gl } = useThree()
   const moveForward = useRef(false)
   const moveBackward = useRef(false)
@@ -19,9 +27,8 @@ export default function FirstPersonControls({ onMobileMove, onMobileLook }: Firs
   const moveRight = useRef(false)
   
   const euler = useRef(new THREE.Euler(0, 0, 0, 'YXZ'))
-  const moveVector = useRef(new THREE.Vector3()) // Переиспользуем вектор для оптимизации
+  const moveVector = useRef(new THREE.Vector3())
 
-  // Обработка мобильных команд движения
   useEffect(() => {
     if (!onMobileMove) return
 
@@ -42,7 +49,6 @@ export default function FirstPersonControls({ onMobileMove, onMobileLook }: Firs
       }
     }
 
-    // Сохраняем обработчик для использования
     ;(window as any).__mobileMoveHandler = handleMobileMove
 
     return () => {
@@ -50,7 +56,6 @@ export default function FirstPersonControls({ onMobileMove, onMobileLook }: Firs
     }
   }, [onMobileMove])
 
-  // Обработка мобильных команд поворота
   useEffect(() => {
     if (!onMobileLook) return
 
@@ -75,9 +80,7 @@ export default function FirstPersonControls({ onMobileMove, onMobileLook }: Firs
     let lastMouseY = 0
     let isMouseDown = false
 
-    // Управление клавиатурой
     const handleKeyDown = (event: KeyboardEvent) => {
-      // Игнорируем если фокус на input/textarea
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
         return
       }
@@ -101,7 +104,6 @@ export default function FirstPersonControls({ onMobileMove, onMobileLook }: Firs
           break
         case 'Space':
           event.preventDefault()
-          // Прыжок отключен для упрощения
           break
       }
     }
@@ -127,20 +129,39 @@ export default function FirstPersonControls({ onMobileMove, onMobileLook }: Firs
       }
     }
 
-    // Управление мышью - два варианта: Pointer Lock или зажатая мышь
     const onPointerLockChange = () => {
+      const wasLocked = isPointerLocked
       isPointerLocked = document.pointerLockElement === gl.domElement
+      
+      if (wasLocked && !isPointerLocked) {
+        gl.domElement.style.cursor = 'default'
+      }
     }
 
     const requestPointerLock = () => {
       gl.domElement.requestPointerLock().catch(() => {
-        // Если Pointer Lock не поддерживается, используем альтернативный метод
         console.log('Pointer Lock не поддерживается, используем альтернативный метод')
       })
     }
 
     const handleMouseDown = (event: MouseEvent) => {
-      if (event.button === 0) { // Левая кнопка мыши
+      const target = event.target as HTMLElement
+      if (target && (
+        target.tagName === 'BUTTON' ||
+        target.tagName === 'A' ||
+        target.closest('button') ||
+        target.closest('a') ||
+        target.closest('[role="button"]') ||
+        target.closest('[data-html]')
+      )) {
+        return
+      }
+      
+      if (event.target !== gl.domElement && !gl.domElement.contains(event.target as Node)) {
+        return
+      }
+      
+      if (event.button === 0) {
         isMouseDown = true
         lastMouseX = event.clientX
         lastMouseY = event.clientY
@@ -149,14 +170,30 @@ export default function FirstPersonControls({ onMobileMove, onMobileLook }: Firs
       }
     }
 
-    const handleMouseUp = () => {
+    const handleMouseUp = (event: MouseEvent) => {
+      if (event.target !== gl.domElement && !gl.domElement.contains(event.target as Node)) {
+        return
+      }
       isMouseDown = false
       gl.domElement.style.cursor = 'default'
     }
 
     const handleMouseMove = (event: MouseEvent) => {
+      const target = event.target as HTMLElement
+      if (target && (
+        target.tagName === 'BUTTON' ||
+        target.tagName === 'A' ||
+        target.closest('button') ||
+        target.closest('a') ||
+        target.closest('[role="button"]')
+      )) {
+        if (isPointerLocked) {
+          document.exitPointerLock()
+        }
+        return
+      }
+
       if (isPointerLocked) {
-        // Pointer Lock режим
         const movementX = event.movementX || 0
         const movementY = event.movementY || 0
 
@@ -166,7 +203,6 @@ export default function FirstPersonControls({ onMobileMove, onMobileLook }: Firs
         euler.current.x = Math.max(-PI_2, Math.min(PI_2, euler.current.x))
         camera.quaternion.setFromEuler(euler.current)
       } else if (isMouseDown) {
-        // Альтернативный режим - при зажатой мыши
         const deltaX = event.clientX - lastMouseX
         const deltaY = event.clientY - lastMouseY
 
@@ -181,27 +217,43 @@ export default function FirstPersonControls({ onMobileMove, onMobileLook }: Firs
       }
     }
 
-    // События
-    gl.domElement.addEventListener('mousedown', handleMouseDown)
-    gl.domElement.addEventListener('mouseup', handleMouseUp)
-    gl.domElement.addEventListener('mousemove', handleMouseMove)
-    document.addEventListener('pointerlockchange', onPointerLockChange)
-    window.addEventListener('keydown', handleKeyDown)
-    window.addEventListener('keyup', handleKeyUp)
+    const handleDocumentClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement
+      if (target && (
+        target.tagName === 'BUTTON' ||
+        target.tagName === 'A' ||
+        target.closest('button') ||
+        target.closest('a') ||
+        target.closest('[role="button"]') ||
+        target.closest('[data-html]')
+      )) {
+        if (document.pointerLockElement) {
+          document.exitPointerLock()
+        }
+      }
+    }
 
-    // Выход из Pointer Lock при нажатии ESC
     const handleEsc = (event: KeyboardEvent) => {
       if (event.code === 'Escape' && document.pointerLockElement) {
         document.exitPointerLock()
       }
     }
+
+    gl.domElement.addEventListener('mousedown', handleMouseDown, true)
+    gl.domElement.addEventListener('mouseup', handleMouseUp, true)
+    gl.domElement.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('pointerlockchange', onPointerLockChange)
+    document.addEventListener('click', handleDocumentClick, true)
+    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('keyup', handleKeyUp)
     document.addEventListener('keydown', handleEsc)
 
     return () => {
-      gl.domElement.removeEventListener('mousedown', handleMouseDown)
-      gl.domElement.removeEventListener('mouseup', handleMouseUp)
+      gl.domElement.removeEventListener('mousedown', handleMouseDown, true)
+      gl.domElement.removeEventListener('mouseup', handleMouseUp, true)
       gl.domElement.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('pointerlockchange', onPointerLockChange)
+      document.removeEventListener('click', handleDocumentClick, true)
       document.removeEventListener('keydown', handleEsc)
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
@@ -209,37 +261,45 @@ export default function FirstPersonControls({ onMobileMove, onMobileLook }: Firs
   }, [camera, gl])
 
   useFrame((state, delta) => {
-    // Оптимизация: проверяем, есть ли активное движение
     const forward = Number(moveForward.current) - Number(moveBackward.current)
     const right = Number(moveRight.current) - Number(moveLeft.current)
     
-    // Если нет движения, пропускаем вычисления
     if (forward === 0 && right === 0) {
       return
     }
 
-    // Скорость движения (оптимизированная)
     const moveSpeed = 8.0
     const speed = moveSpeed * delta
 
-    // Движение относительно направления камеры (оптимизированное)
-    // Движение вперед/назад (по оси Z камеры)
     if (forward !== 0) {
       moveVector.current.setFromMatrixColumn(camera.matrix, 2)
       moveVector.current.multiplyScalar(-forward * speed)
       camera.position.add(moveVector.current)
     }
 
-    // Движение влево/вправо (по оси X камеры)
     if (right !== 0) {
       moveVector.current.setFromMatrixColumn(camera.matrix, 0)
       moveVector.current.multiplyScalar(right * speed)
       camera.position.add(moveVector.current)
     }
 
-    // Фиксируем высоту на уровне глаз человека
-    if (camera.position.y !== 1.6) {
-      camera.position.y = 1.6
+    if (bounds) {
+      camera.position.x = Math.max(
+        bounds.minX + 1,
+        Math.min(bounds.maxX - 1, camera.position.x)
+      )
+      camera.position.z = Math.max(
+        bounds.minZ + 1,
+        Math.min(bounds.maxZ - 1, camera.position.z)
+      )
+      camera.position.y = Math.max(
+        bounds.minY,
+        Math.min(bounds.maxY, camera.position.y)
+      )
+    } else {
+      if (camera.position.y !== 1.6) {
+        camera.position.y = 1.6
+      }
     }
   })
 

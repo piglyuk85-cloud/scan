@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  virtual-gallery:
+    build: .
+    ports:
+      - "3000:3000"
+    volumes:
+      # Монтируем папки для сохранения данных
+      - ./public/models:/app/public/models
+      - ./public/images:/app/public/images
+      - ./prisma:/app/prisma
+      - ./storage:/app/storage
+      - ./qr-codes:/app/qr-codes
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=file:./prisma/dev.db
+
+

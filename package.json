@@ -7,30 +7,45 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "generate-qr": "node scripts/generate-qr.js"
+    "generate-qr": "node scripts/generate-qr.js",
+    "migrate:data": "tsx scripts/migrate-to-db.ts",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:studio": "prisma studio",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
+    "@prisma/client": "6.19.2",
+    "@react-three/drei": "^9.92.7",
+    "@react-three/fiber": "^8.15.19",
+    "framer-motion": "^10.16.0",
+    "glob": "^13.0.0",
+    "next": "^14.0.0",
+    "prisma": "6.19.2",
+    "qrcode": "^1.5.3",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "next": "^14.0.0",
+    "sharp": "^0.33.5",
+    "socket.io": "^4.7.0",
+    "socket.io-client": "^4.7.0",
     "three": "^0.160.0",
-    "@react-three/fiber": "^8.15.19",
-    "@react-three/drei": "^9.92.7",
-    "qrcode": "^1.5.3",
-    "framer-motion": "^10.16.0"
+    "three-obj-mtl-loader": "^1.0.3"
   },
   "devDependencies": {
-    "typescript": "^5.2.2",
     "@types/node": "^20.8.0",
+    "@types/qrcode": "^1.5.0",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "@types/three": "^0.160.0",
-    "@types/qrcode": "^1.5.0",
+    "@types/uuid": "^9.0.7",
     "autoprefixer": "^10.4.16",
+    "dotenv": "^17.2.3",
+    "eslint": "^8.51.0",
+    "eslint-config-next": "^14.0.0",
     "postcss": "^8.4.31",
     "tailwindcss": "^3.3.5",
-    "eslint": "^8.51.0",
-    "eslint-config-next": "^14.0.0"
+    "tsx": "^4.21.0",
+    "typescript": "^5.2.2"
   }
 }
-

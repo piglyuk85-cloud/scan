@@ -7,19 +7,28 @@ interface ExhibitFormProps {
   exhibit?: Exhibit | null
   onSubmit: () => void
   onCancel: () => void
+  userRole?: 'admin' | 'super' | null
 }
 
-export default function ExhibitForm({ exhibit, onSubmit, onCancel }: ExhibitFormProps) {
+export default function ExhibitForm({ exhibit, onSubmit, onCancel, userRole }: ExhibitFormProps) {
   const [formData, setFormData] = useState<Partial<Exhibit>>({
+    inventoryNumber: '',
     title: '',
     description: '',
     fullDescription: '',
-    category: '',
-    year: '',
+    creationDate: '',
     studentName: '',
     studentCourse: '',
     studentGroup: '',
     supervisor: '',
+    supervisorPosition: '',
+    supervisorRank: '',
+    supervisorDepartment: '',
+    dimensions: '',
+    currentLocation: '',
+    isPublic: true,
+    category: '',
+    year: '',
     has3DModel: false,
     modelPath: '',
     previewImage: '',
@@ -36,7 +45,10 @@ export default function ExhibitForm({ exhibit, onSubmit, onCancel }: ExhibitForm
 
   useEffect(() => {
     if (exhibit) {
-      setFormData(exhibit)
+      setFormData({
+        ...exhibit,
+        year: exhibit.creationDate || exhibit.year || '',
+      })
     }
   }, [exhibit])
 
@@ -53,53 +65,11 @@ export default function ExhibitForm({ exhibit, onSubmit, onCancel }: ExhibitForm
     }
   }
 
-  const handleTechnicalSpecsChange = (key: string, value: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      technicalSpecs: {
-        ...prev.technicalSpecs,
-        [key]: value,
-      },
-    }))
-  }
-
-  const handleAddTechnicalSpec = () => {
-    const key = prompt('Введите название характеристики:')
-    if (key) {
-      handleTechnicalSpecsChange(key, '')
-    }
-  }
-
-  const handleRemoveTechnicalSpec = (key: string) => {
-    const specs = { ...formData.technicalSpecs }
-    delete specs[key]
-    setFormData((prev) => ({ ...prev, technicalSpecs: specs }))
-  }
-
-  const handleAddInterestingFact = () => {
-    const fact = prompt('Введите интересный факт:')
-    if (fact) {
-      setFormData((prev) => ({
-        ...prev,
-        interestingFacts: [...(prev.interestingFacts || []), fact],
-      }))
-    }
-  }
-
-  const handleRemoveInterestingFact = (index: number) => {
-    setFormData((prev) => ({
-      ...prev,
-      interestingFacts: prev.interestingFacts?.filter((_, i) => i !== index) || [],
-    }))
-  }
-
   const handleFileUpload = async (
     file: File,
     type: 'model' | 'image'
   ): Promise<string | null> => {
     setUploading(true)
-    setUploadProgress(`Загрузка ${file.name}...`)
-
     try {
       const formData = new FormData()
       formData.append('file', file)
@@ -115,7 +85,6 @@ export default function ExhibitForm({ exhibit, onSubmit, onCancel }: ExhibitForm
       }
 
       const data = await response.json()
-      setUploadProgress('Файл загружен успешно!')
       return data.path
     } catch (error) {
       console.error('Ошибка загрузки:', error)
@@ -123,7 +92,6 @@ export default function ExhibitForm({ exhibit, onSubmit, onCancel }: ExhibitForm
       return null
     } finally {
       setUploading(false)
-      setTimeout(() => setUploadProgress(''), 2000)
     }
   }
 
@@ -131,11 +99,7 @@ export default function ExhibitForm({ exhibit, onSubmit, onCancel }: ExhibitForm
     const file = e.target.files?.[0]
     if (!file) return
 
-    if (!file.name.endsWith('.glb') && !file.name.endsWith('.gltf')) {
-      alert('Поддерживаются только файлы .glb и .gltf')
-      return
-    }
-
+    setUploadProgress('Загрузка 3D модели...')
     const path = await handleFileUpload(file, 'model')
     if (path) {
       setFormData((prev) => ({
@@ -143,6 +107,10 @@ export default function ExhibitForm({ exhibit, onSubmit, onCancel }: ExhibitForm
         modelPath: path,
         has3DModel: true,
       }))
+      setUploadProgress('3D модель успешно загружена')
+      setTimeout(() => setUploadProgress(''), 3000)
+    } else {
+      setUploadProgress('')
     }
   }
 
@@ -150,82 +118,73 @@ export default function ExhibitForm({ exhibit, onSubmit, onCancel }: ExhibitForm
     const file = e.target.files?.[0]
     if (!file) return
 
+    setUploadProgress('Загрузка изображения...')
     const path = await handleFileUpload(file, 'image')
     if (path) {
-      // Если превью еще нет, устанавливаем первое изображение как превью
-      if (!formData.previewImage) {
-        setFormData((prev) => ({ ...prev, previewImage: path }))
-      }
       setFormData((prev) => ({
         ...prev,
         images: [...(prev.images || []), path],
+        previewImage: prev.previewImage || path,
       }))
-    }
-    // Сбрасываем значение input, чтобы можно было загрузить тот же файл снова
-    if (imageFileRef.current) {
-      imageFileRef.current.value = ''
+      setUploadProgress('Изображение успешно загружено')
+      setTimeout(() => setUploadProgress(''), 3000)
+    } else {
+      setUploadProgress('')
     }
   }
 
-  const handleSetPreview = (imagePath: string) => {
-    setFormData((prev) => ({ ...prev, previewImage: imagePath }))
+  const handleSetPreview = (path: string) => {
+    setFormData((prev) => ({ ...prev, previewImage: path }))
   }
 
-  const handleRemoveImage = (imagePath: string) => {
-    setFormData((prev) => {
-      const newImages = (prev.images || []).filter((img) => img !== imagePath)
-      // Если удаляем превью, устанавливаем первое оставшееся изображение как превью
-      let newPreview = prev.previewImage
-      if (prev.previewImage === imagePath) {
-        newPreview = newImages.length > 0 ? newImages[0] : ''
-      }
-      return {
-        ...prev,
-        images: newImages,
-        previewImage: newPreview,
-      }
-    })
+  const handleRemoveImage = (path: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      images: prev.images?.filter((img) => img !== path) || [],
+      previewImage: prev.previewImage === path ? '' : prev.previewImage,
+    }))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-
-    if (!formData.title || !formData.description || !formData.category) {
-      alert('Заполните все обязательные поля')
-      return
-    }
+    setUploading(true)
 
     try {
-      const url = exhibit
-        ? `/api/exhibits/${exhibit.id}`
-        : '/api/exhibits'
+      const url = exhibit ? `/api/exhibits/${exhibit.id}` : '/api/exhibits'
       const method = exhibit ? 'PUT' : 'POST'
+
+      const dataToSend = {
+        ...formData,
+        year: formData.creationDate || formData.year || '',
+      }
 
       const response = await fetch(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(dataToSend),
       })
 
-      if (response.ok) {
-        alert(exhibit ? 'Работа обновлена' : 'Работа создана')
-        onSubmit()
-      } else {
+      if (!response.ok) {
         const error = await response.json()
-        alert(error.error || 'Ошибка при сохранении')
+        throw new Error(error.error || 'Ошибка сохранения')
       }
+
+      alert(exhibit ? 'Работа обновлена' : 'Работа создана')
+      onSubmit()
     } catch (error) {
       console.error('Ошибка сохранения:', error)
-      alert('Ошибка при сохранении работы')
+      alert('Ошибка при сохранении работы. Проверьте консоль для деталей.')
+    } finally {
+      setUploading(false)
     }
   }
 
   return (
     <div className="bg-white rounded-lg shadow-md p-8">
       <h2 className="text-2xl font-bold mb-6 text-gray-800">
-        {exhibit ? 'Редактировать работу' : 'Добавить новую работу'}
+        {exhibit ? 'Редактировать экспонат' : 'Добавить новый экспонат'}
       </h2>
 
       {uploadProgress && (
@@ -235,256 +194,96 @@ export default function ExhibitForm({ exhibit, onSubmit, onCancel }: ExhibitForm
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Основная информация */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Название <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              name="title"
-              value={formData.title}
-              onChange={handleChange}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Категория <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              name="category"
-              value={formData.category}
-              onChange={handleChange}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Год создания
-            </label>
-            <input
-              type="text"
-              name="year"
-              value={formData.year}
-              onChange={handleChange}
-              placeholder="2024"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
-            />
-          </div>
-
-          <div>
-            <label className="flex items-center mt-6">
-              <input
-                type="checkbox"
-                name="has3DModel"
-                checked={formData.has3DModel}
-                onChange={handleChange}
-                className="w-5 h-5 text-primary-600 border-gray-300 rounded"
-              />
-              <span className="ml-2 text-sm font-medium text-gray-700">
-                Есть 3D модель
-              </span>
-            </label>
-          </div>
-        </div>
-
+        {/* 1. Учетный инвентарный номер фонда/музея */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Краткое описание <span className="text-red-500">*</span>
+            1. Учетный инвентарный номер фонда/музея
           </label>
-          <textarea
-            name="description"
-            value={formData.description}
+          <input
+            type="text"
+            name="inventoryNumber"
+            value={formData.inventoryNumber || ''}
             onChange={handleChange}
-            rows={3}
+            placeholder="Введите инвентарный номер"
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+          />
+        </div>
+
+        {/* 2. Краткое название экспоната */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            2. Краткое название экспоната <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            name="title"
+            value={formData.title || ''}
+            onChange={handleChange}
             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
             required
           />
         </div>
 
+        {/* 3. Текст для превью/карточки (2-3 предложения) */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Полное описание
+            3. Текст для превью/карточки (2-3 предложения) <span className="text-red-500">*</span>
+          </label>
+          <textarea
+            name="description"
+            value={formData.description || ''}
+            onChange={handleChange}
+            rows={3}
+            placeholder="Введите краткое описание для карточки экспоната (2-3 предложения)"
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+            required
+          />
+        </div>
+
+        {/* 4. Полное описание: история создания, стилистика, символика */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            4. Полное описание: история создания, стилистика, символика
           </label>
           <textarea
             name="fullDescription"
-            value={formData.fullDescription}
+            value={formData.fullDescription || ''}
             onChange={handleChange}
-            rows={5}
+            rows={8}
+            placeholder="Введите полное описание экспоната: история создания, стилистика, символика..."
             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
           />
         </div>
 
-        {/* Загрузка 3D модели */}
+        {/* 5. Дата создания */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            3D Модель (.glb)
+            5. Дата создания
           </label>
           <input
-            ref={modelFileRef}
-            type="file"
-            accept=".glb,.gltf"
-            onChange={handleModelUpload}
-            className="hidden"
+            type="text"
+            name="creationDate"
+            value={formData.creationDate || ''}
+            onChange={handleChange}
+            placeholder="Например: 2024 год или 2023-2024"
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
           />
-          <div className="flex items-center gap-4">
-            <button
-              type="button"
-              onClick={() => modelFileRef.current?.click()}
-              disabled={uploading}
-              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors disabled:opacity-50"
-            >
-              {uploading ? 'Загрузка...' : 'Выбрать файл'}
-            </button>
-            {formData.modelPath && (
-              <span className="text-sm text-gray-600">
-                Загружено: {formData.modelPath}
-              </span>
-            )}
-          </div>
         </div>
 
-        {/* Загрузка изображений */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Изображения
-          </label>
-          <input
-            ref={imageFileRef}
-            type="file"
-            accept="image/*"
-            onChange={handleImageUpload}
-            className="hidden"
-          />
-          <div className="flex items-center gap-4 mb-4">
-            <button
-              type="button"
-              onClick={() => imageFileRef.current?.click()}
-              disabled={uploading}
-              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors disabled:opacity-50"
-            >
-              {uploading ? 'Загрузка...' : 'Добавить изображение'}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                const file = imageFileRef.current?.files?.[0]
-                if (file) {
-                  handleFileUpload(file, 'image').then((path) => {
-                    if (path) {
-                      setFormData((prev) => ({ ...prev, previewImage: path }))
-                      // Добавляем в список изображений, если его там еще нет
-                      setFormData((prev) => {
-                        if (!prev.images?.includes(path)) {
-                          return { ...prev, images: [...(prev.images || []), path] }
-                        }
-                        return prev
-                      })
-                    }
-                  })
-                } else {
-                  imageFileRef.current?.click()
-                }
-              }}
-              disabled={uploading}
-              className="px-4 py-2 bg-primary-200 text-primary-700 rounded-lg hover:bg-primary-300 transition-colors disabled:opacity-50"
-            >
-              {uploading ? 'Загрузка...' : 'Загрузить как превью'}
-            </button>
-          </div>
-          
-          {/* Превью изображение */}
-          {formData.previewImage && (
-            <div className="mb-4 p-3 bg-blue-50 rounded-lg border-2 border-blue-200">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-gray-700">Превью изображение:</span>
-                <button
-                  type="button"
-                  onClick={() => setFormData((prev) => ({ ...prev, previewImage: '' }))}
-                  className="text-xs text-red-600 hover:text-red-700"
-                >
-                  Убрать превью
-                </button>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-blue-600 break-all">{formData.previewImage}</span>
-                {formData.previewImage && (
-                  <img 
-                    src={formData.previewImage} 
-                    alt="Preview" 
-                    className="w-16 h-16 object-cover rounded border border-gray-300"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = 'none'
-                    }}
-                  />
-                )}
-              </div>
-            </div>
-          )}
-          
-          {/* Список всех изображений */}
-          {formData.images && formData.images.length > 0 && (
-            <div className="space-y-2">
-              <span className="text-sm font-medium text-gray-700 block">Все изображения:</span>
-              {formData.images.map((img, idx) => (
-                <div 
-                  key={idx} 
-                  className={`flex items-center gap-2 p-2 rounded border ${
-                    img === formData.previewImage 
-                      ? 'bg-blue-50 border-blue-300' 
-                      : 'bg-gray-50 border-gray-200'
-                  }`}
-                >
-                  <img 
-                    src={img} 
-                    alt={`Image ${idx + 1}`}
-                    className="w-12 h-12 object-cover rounded border border-gray-300"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = 'none'
-                    }}
-                  />
-                  <span className="flex-1 text-sm text-gray-600 break-all">{img}</span>
-                  {img !== formData.previewImage && (
-                    <button
-                      type="button"
-                      onClick={() => handleSetPreview(img)}
-                      className="px-2 py-1 text-xs bg-primary-100 text-primary-700 rounded hover:bg-primary-200"
-                    >
-                      Сделать превью
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveImage(img)}
-                    className="px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200"
-                  >
-                    Удалить
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Информация об авторе */}
+        {/* 6. Автор/мастер (ФИО, курс, группа) */}
         <div className="bg-gray-50 rounded-lg p-6">
-          <h3 className="text-lg font-semibold mb-4 text-gray-800">Информация об авторе</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <h3 className="text-lg font-semibold mb-4 text-gray-800">
+            6. Автор/мастер (ФИО, курс, группа)
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Имя студента
+                ФИО
               </label>
               <input
                 type="text"
                 name="studentName"
-                value={formData.studentName}
+                value={formData.studentName || ''}
                 onChange={handleChange}
                 placeholder="Иванов Иван Иванович"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
@@ -497,7 +296,7 @@ export default function ExhibitForm({ exhibit, onSubmit, onCancel }: ExhibitForm
               <input
                 type="text"
                 name="studentCourse"
-                value={formData.studentCourse}
+                value={formData.studentCourse || ''}
                 onChange={handleChange}
                 placeholder="3 курс"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
@@ -510,117 +309,299 @@ export default function ExhibitForm({ exhibit, onSubmit, onCancel }: ExhibitForm
               <input
                 type="text"
                 name="studentGroup"
-                value={formData.studentGroup}
+                value={formData.studentGroup || ''}
                 onChange={handleChange}
                 placeholder="ХД-31"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
               />
             </div>
+          </div>
+        </div>
+
+        {/* 7. Научный руководитель (ФИО, должность, звание, кафедра) */}
+        <div className="bg-gray-50 rounded-lg p-6">
+          <h3 className="text-lg font-semibold mb-4 text-gray-800">
+            7. Научный руководитель (ФИО, должность, звание, кафедра)
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Руководитель
+                ФИО
               </label>
               <input
                 type="text"
                 name="supervisor"
-                value={formData.supervisor}
+                value={formData.supervisor || ''}
                 onChange={handleChange}
-                placeholder="ФИО руководителя"
+                placeholder="Петров Петр Петрович"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Должность
+              </label>
+              <input
+                type="text"
+                name="supervisorPosition"
+                value={formData.supervisorPosition || ''}
+                onChange={handleChange}
+                placeholder="Доцент"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Звание
+              </label>
+              <input
+                type="text"
+                name="supervisorRank"
+                value={formData.supervisorRank || ''}
+                onChange={handleChange}
+                placeholder="Кандидат наук"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Кафедра
+              </label>
+              <input
+                type="text"
+                name="supervisorDepartment"
+                value={formData.supervisorDepartment || ''}
+                onChange={handleChange}
+                placeholder="Кафедра изобразительного искусства"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
               />
             </div>
           </div>
         </div>
 
-        {/* Информация о создании работы */}
+        {/* 8. Размеры (ВхШхГ) или диаметр */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            О работе
+            8. Размеры (ВхШхГ) или диаметр
           </label>
-          <textarea
-            name="creationInfo"
-            value={formData.creationInfo}
+          <input
+            type="text"
+            name="dimensions"
+            value={formData.dimensions || ''}
             onChange={handleChange}
-            rows={4}
-            placeholder="Описание процесса создания, концепции работы, техники исполнения..."
+            placeholder="Например: 30x20x15 см или диаметр 25 см"
             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
           />
         </div>
 
-        {/* Технические характеристики */}
+        {/* 9. Текущее местонахождение (экспозиция, запасник) */}
         <div>
-          <div className="flex justify-between items-center mb-2">
-            <label className="block text-sm font-medium text-gray-700">
-              Технические характеристики
-            </label>
-            <button
-              type="button"
-              onClick={handleAddTechnicalSpec}
-              className="text-sm text-primary-600 hover:text-primary-700"
-            >
-              + Добавить
-            </button>
-          </div>
-          <div className="space-y-2">
-            {formData.technicalSpecs &&
-              Object.entries(formData.technicalSpecs).map(([key, value]) => (
-                <div key={key} className="flex gap-2">
-                  <input
-                    type="text"
-                    value={key}
-                    readOnly
-                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg bg-gray-50"
-                  />
-                  <input
-                    type="text"
-                    value={value}
-                    onChange={(e) => handleTechnicalSpecsChange(key, e.target.value)}
-                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveTechnicalSpec(key)}
-                    className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200"
-                  >
-                    Удалить
-                  </button>
-                </div>
-              ))}
-          </div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            9. Текущее местонахождение (экспозиция, запасник)
+          </label>
+          <input
+            type="text"
+            name="currentLocation"
+            value={formData.currentLocation || ''}
+            onChange={handleChange}
+            placeholder="Например: Экспозиция зала №1 или Запасник"
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+          />
         </div>
 
-        {/* Интересные факты */}
+        {/* 10. Флаг, разрешающий показ на публичном сайте */}
         <div>
-          <div className="flex justify-between items-center mb-2">
-            <label className="block text-sm font-medium text-gray-700">
-              Интересные факты
+          <label className="flex items-center">
+            <input
+              type="checkbox"
+              name="isPublic"
+              checked={formData.isPublic ?? true}
+              onChange={handleChange}
+              className="w-5 h-5 text-primary-600 border-gray-300 rounded"
+            />
+            <span className="ml-2 text-sm font-medium text-gray-700">
+              10. Разрешить показ на публичном сайте
+            </span>
+          </label>
+        </div>
+
+        {/* Дополнительные поля */}
+        <div className="border-t pt-6 mt-6">
+          <h3 className="text-lg font-semibold mb-4 text-gray-800">Дополнительные поля</h3>
+          
+          {/* Категория (для обратной совместимости) */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Категория <span className="text-red-500">*</span>
             </label>
-            <button
-              type="button"
-              onClick={handleAddInterestingFact}
-              className="text-sm text-primary-600 hover:text-primary-700"
-            >
-              + Добавить
-            </button>
+            <input
+              type="text"
+              name="category"
+              value={formData.category || ''}
+              onChange={handleChange}
+              placeholder="Например: Скульптура, Живопись, Графика"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+              required
+            />
           </div>
-          <div className="space-y-2">
-            {formData.interestingFacts?.map((fact, index) => (
-              <div key={index} className="flex gap-2">
-                <input
-                  type="text"
-                  value={fact}
-                  readOnly
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg bg-gray-50"
-                />
-                <button
-                  type="button"
-                  onClick={() => handleRemoveInterestingFact(index)}
-                  className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200"
-                >
-                  Удалить
-                </button>
+
+          {/* 3D модель */}
+          <div className="mb-4">
+            <label className="flex items-center mb-2">
+              <input
+                type="checkbox"
+                name="has3DModel"
+                checked={formData.has3DModel || false}
+                onChange={handleChange}
+                className="w-5 h-5 text-primary-600 border-gray-300 rounded"
+              />
+              <span className="ml-2 text-sm font-medium text-gray-700">
+                Есть 3D модель
+              </span>
+            </label>
+            <input
+              ref={modelFileRef}
+              type="file"
+              accept=".glb,.gltf"
+              onChange={handleModelUpload}
+              className="hidden"
+            />
+            <div className="flex items-center gap-4">
+              <button
+                type="button"
+                onClick={() => modelFileRef.current?.click()}
+                disabled={uploading}
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors disabled:opacity-50"
+              >
+                {uploading ? 'Загрузка...' : 'Выбрать 3D модель'}
+              </button>
+              {formData.modelPath && (
+                <span className="text-sm text-gray-600">
+                  Загружено: {formData.modelPath}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Изображения */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Изображения
+            </label>
+            <input
+              ref={imageFileRef}
+              type="file"
+              accept="image/*"
+              onChange={handleImageUpload}
+              className="hidden"
+            />
+            <div className="flex items-center gap-4 mb-4">
+              <button
+                type="button"
+                onClick={() => imageFileRef.current?.click()}
+                disabled={uploading}
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors disabled:opacity-50"
+              >
+                {uploading ? 'Загрузка...' : 'Добавить изображение'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const file = imageFileRef.current?.files?.[0]
+                  if (file) {
+                    handleFileUpload(file, 'image').then((path) => {
+                      if (path) {
+                        setFormData((prev) => ({ ...prev, previewImage: path }))
+                        setFormData((prev) => {
+                          if (!prev.images?.includes(path)) {
+                            return { ...prev, images: [...(prev.images || []), path] }
+                          }
+                          return prev
+                        })
+                      }
+                    })
+                  } else {
+                    imageFileRef.current?.click()
+                  }
+                }}
+                disabled={uploading}
+                className="px-4 py-2 bg-primary-200 text-primary-700 rounded-lg hover:bg-primary-300 transition-colors disabled:opacity-50"
+              >
+                {uploading ? 'Загрузка...' : 'Загрузить как превью'}
+              </button>
+            </div>
+            
+            {/* Превью изображение */}
+            {formData.previewImage && (
+              <div className="mb-4 p-3 bg-blue-50 rounded-lg border-2 border-blue-200">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-gray-700">Превью изображение:</span>
+                  <button
+                    type="button"
+                    onClick={() => setFormData((prev) => ({ ...prev, previewImage: '' }))}
+                    className="text-xs text-red-600 hover:text-red-700"
+                  >
+                    Убрать превью
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-blue-600 break-all">{formData.previewImage}</span>
+                  {formData.previewImage && (
+                    <img 
+                      src={formData.previewImage} 
+                      alt="Preview" 
+                      className="w-16 h-16 object-cover rounded border border-gray-300"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = 'none'
+                      }}
+                    />
+                  )}
+                </div>
               </div>
-            ))}
+            )}
+            
+            {/* Список всех изображений */}
+            {formData.images && formData.images.length > 0 && (
+              <div className="space-y-2">
+                <span className="text-sm font-medium text-gray-700 block">Все изображения:</span>
+                {formData.images.map((img, idx) => (
+                  <div 
+                    key={idx} 
+                    className={`flex items-center gap-2 p-2 rounded border ${
+                      img === formData.previewImage 
+                        ? 'bg-blue-50 border-blue-300' 
+                        : 'bg-gray-50 border-gray-200'
+                    }`}
+                  >
+                    <img 
+                      src={img} 
+                      alt={`Image ${idx + 1}`}
+                      className="w-12 h-12 object-cover rounded border border-gray-300"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = 'none'
+                      }}
+                    />
+                    <span className="flex-1 text-sm text-gray-600 break-all">{img}</span>
+                    {img !== formData.previewImage && (
+                      <button
+                        type="button"
+                        onClick={() => handleSetPreview(img)}
+                        className="px-2 py-1 text-xs bg-primary-100 text-primary-700 rounded hover:bg-primary-200"
+                      >
+                        Сделать превью
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveImage(img)}
+                      className="px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200"
+                    >
+                      Удалить
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
@@ -631,7 +612,7 @@ export default function ExhibitForm({ exhibit, onSubmit, onCancel }: ExhibitForm
             disabled={uploading}
             className="flex-1 bg-primary-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-primary-700 transition-colors disabled:opacity-50"
           >
-            {exhibit ? 'Сохранить изменения' : 'Создать работу'}
+            {exhibit ? 'Сохранить изменения' : 'Создать экспонат'}
           </button>
           <button
             type="button"
@@ -645,4 +626,3 @@ export default function ExhibitForm({ exhibit, onSubmit, onCancel }: ExhibitForm
     </div>
   )
 }
-

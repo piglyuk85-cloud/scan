@@ -15,6 +15,16 @@ export interface HomePageContent {
     qrCodes: string
     access: string
   }
+  buttons: {
+    catalog: string
+    virtualGallery: string
+    about: string
+    viewAll: string
+    learnMore: string
+  }
+  sections: {
+    popularWorks: string
+  }
 }
 
 export interface AboutPageContent {
@@ -61,6 +71,52 @@ export interface SiteSettings {
       label: string
       href: string
     }>
+    navigationTitle: string
+    contactsTitle: string
+    contactsAddress: string
+  }
+  navigation: {
+    home: string
+    catalog: string
+    virtualGallery: string
+    about: string
+  }
+  catalog: {
+    title: string
+    searchPlaceholder: string
+    searchLabel: string
+    categoryLabel: string
+    yearLabel: string
+    allCategories: string
+    allYears: string
+    only3D: string
+    foundWorks: string
+    noWorksFound: string
+    tryDifferentFilters: string
+  }
+  exhibit: {
+    backToCatalog: string
+    editButton: string
+    model3D: string
+    description: string
+    aboutAuthor: string
+    additionalInfo: string
+    creationInfo: string
+    technicalSpecs: string
+    interestingFacts: string
+    qrCode: string
+    qrCodeDescription: string
+    navigation: string
+    previous: string
+    next: string
+    creationDate: string
+    dimensions: string
+    location: string
+    inventoryNumber: string
+    author: string
+    course: string
+    group: string
+    supervisor: string
   }
 }
 
@@ -69,4 +125,10 @@ export interface PageContent {
   about: AboutPageContent
   settings: SiteSettings
 }
+
+
+
+
+
+
 

@@ -37,7 +37,7 @@ export default function Footer() {
             <p className="text-gray-400">{settings.footer.description}</p>
           </div>
           <div>
-            <h4 className="font-semibold mb-4">Навигация</h4>
+            <h4 className="font-semibold mb-4">{settings.footer.navigationTitle}</h4>
             <ul className="space-y-2 text-gray-400">
               {settings.footer.links.map((link, idx) => (
                 <li key={idx}>
@@ -49,13 +49,9 @@ export default function Footer() {
             </ul>
           </div>
           <div>
-            <h4 className="font-semibold mb-4">Контакты</h4>
-            <p className="text-gray-400">
-              ВГУ имени П.М. Машерова
-              <br />
-              Художественный факультет
-              <br />
-              г. Витебск
+            <h4 className="font-semibold mb-4">{settings.footer.contactsTitle}</h4>
+            <p className="text-gray-400 whitespace-pre-line">
+              {settings.footer.contactsAddress}
             </p>
           </div>
         </div>

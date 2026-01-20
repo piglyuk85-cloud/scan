@@ -4,13 +4,12 @@ import { getPageContent } from '@/lib/pageContent'
 import ExhibitCard from '@/components/ExhibitCard'
 
 export default async function Home() {
-  const exhibits = getExhibits()
-  const featuredExhibits = exhibits.slice(0, 6) // Показываем первые 6 экспонатов
+  const exhibits = await getExhibits(false)
+  const featuredExhibits = exhibits.slice(0, 6)
   const pageContent = await getPageContent()
 
   return (
     <div className="flex flex-col">
-      {/* Hero секция */}
       <section className="relative bg-gradient-to-br from-primary-600 to-primary-800 text-white py-20 px-4">
         <div className="container mx-auto max-w-6xl">
           <div className="text-center">
@@ -28,37 +27,36 @@ export default async function Home() {
                 href="/catalog"
                 className="bg-white text-primary-600 px-8 py-3 rounded-lg font-semibold hover:bg-primary-50 transition-colors"
               >
-                Каталог работ
+                {pageContent.home.buttons.catalog}
               </Link>
               <Link
                 href="/gallery"
                 className="bg-white text-primary-600 px-8 py-3 rounded-lg font-semibold hover:bg-primary-50 transition-colors"
               >
-                Виртуальная галерея
+                {pageContent.home.buttons.virtualGallery}
               </Link>
               <Link
                 href="/about"
                 className="border-2 border-white text-white px-8 py-3 rounded-lg font-semibold hover:bg-white hover:text-primary-600 transition-colors"
               >
-                О галерее
+                {pageContent.home.buttons.about}
               </Link>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Популярные экспонаты */}
       <section className="py-16 px-4 bg-gray-50">
         <div className="container mx-auto max-w-6xl">
           <div className="flex justify-between items-center mb-8">
             <h2 className="text-3xl font-bold text-gray-800">
-              Популярные работы
+              {pageContent.home.sections.popularWorks}
             </h2>
             <Link
               href="/catalog"
               className="text-primary-600 hover:text-primary-700 font-semibold"
             >
-              Смотреть все →
+              {pageContent.home.buttons.viewAll}
             </Link>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -69,7 +67,6 @@ export default async function Home() {
         </div>
       </section>
 
-      {/* Информация о музее */}
       <section className="py-16 px-4">
         <div className="container mx-auto max-w-6xl">
           <div className="grid md:grid-cols-2 gap-12 items-center">
@@ -88,13 +85,13 @@ export default async function Home() {
                   href="/gallery"
                   className="inline-block bg-primary-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-primary-700 transition-colors"
                 >
-                  Виртуальная галерея
+                  {pageContent.home.buttons.virtualGallery}
                 </Link>
                 <Link
                   href="/about"
                   className="inline-block border-2 border-primary-600 text-primary-600 px-6 py-3 rounded-lg font-semibold hover:bg-primary-50 transition-colors"
                 >
-                  Узнать больше
+                  {pageContent.home.buttons.learnMore}
                 </Link>
               </div>
             </div>

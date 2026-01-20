@@ -71,7 +71,6 @@ function ModelLoader({ modelPath }: { modelPath: string }) {
   )
 }
 
-// Обертка с Suspense для безопасной загрузки
 export default function SafeModelWrapper({ modelPath }: SafeModelProps) {
   return (
     <Suspense

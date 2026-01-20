@@ -11,14 +11,15 @@ export default function MobileControls({ onMove, onLook }: MobileControlsProps) 
   const [isTouchActive, setIsTouchActive] = useState(false)
   const [gyroEnabled, setGyroEnabled] = useState(false)
   const touchStartRef = useRef<{ x: number; y: number } | null>(null)
-  const lookTouchRef = useRef<{ x: number; y: number } | null>(null)
+  const lookTouchRef = useRef<{ x: number; y: number; touchId: number } | null>(null)
   const lastGyroRef = useRef<{ beta: number; gamma: number } | null>(null)
+  const activeTouchIdRef = useRef<number | null>(null)
+  const accumulatedDeltaRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
+  const animationFrameRef = useRef<number | null>(null)
 
-  // Определяем, мобильное ли устройство
   const isMobile = typeof window !== 'undefined' && 
     ('ontouchstart' in window || navigator.maxTouchPoints > 0)
 
-  // Поддержка гироскопа (опционально)
   useEffect(() => {
     if (!gyroEnabled || !isMobile) return
 
@@ -34,7 +35,6 @@ export default function MobileControls({ onMove, onLook }: MobileControlsProps) 
     }
 
     if (typeof DeviceOrientationEvent !== 'undefined') {
-      // Запрос разрешения на доступ к гироскопу (iOS 13+)
       if (typeof (DeviceOrientationEvent as any).requestPermission === 'function') {
         ;(DeviceOrientationEvent as any).requestPermission()
           .then((response: string) => {
@@ -69,69 +69,213 @@ export default function MobileControls({ onMove, onLook }: MobileControlsProps) 
     onMove(direction, false)
   }
 
-  // Обработка поворота камеры касанием (правая часть экрана)
+  const applyLookDelta = () => {
+    if (accumulatedDeltaRef.current.x !== 0 || accumulatedDeltaRef.current.y !== 0) {
+      const sensitivity = 1.8
+      onLook(
+        accumulatedDeltaRef.current.x * sensitivity,
+        accumulatedDeltaRef.current.y * sensitivity
+      )
+      accumulatedDeltaRef.current = { x: 0, y: 0 }
+    }
+    
+    if (lookTouchRef.current !== null && activeTouchIdRef.current !== null) {
+      animationFrameRef.current = requestAnimationFrame(applyLookDelta)
+    } else {
+      animationFrameRef.current = null
+    }
+  }
+
   const handleLookTouchStart = (e: React.TouchEvent) => {
-    // Проверяем, что касание в правой части экрана (для поворота камеры)
+    if (e.touches.length === 0) return
+    
     const touch = e.touches[0]
-    const screenWidth = window.innerWidth
-    // Увеличиваем порог до 50%, чтобы левая часть точно была свободна для экспонатов
-    if (touch.clientX > screenWidth * 0.5) {
-      lookTouchRef.current = { x: touch.clientX, y: touch.clientY }
+    
+    if (activeTouchIdRef.current !== null) return
+    
+    activeTouchIdRef.current = touch.identifier
+    lookTouchRef.current = { 
+      x: touch.clientX, 
+      y: touch.clientY,
+      touchId: touch.identifier
+    }
+    accumulatedDeltaRef.current = { x: 0, y: 0 }
+    if (animationFrameRef.current === null) {
+      animationFrameRef.current = requestAnimationFrame(applyLookDelta)
+    }
+    e.preventDefault()
+    e.stopPropagation()
+  }
+
+  const handleLookTouchMove = (e: React.TouchEvent) => {
+    if (activeTouchIdRef.current === null || lookTouchRef.current === null) {
+      return
+    }
+    
+    let touch = Array.from(e.touches).find(
+      t => t.identifier === activeTouchIdRef.current
+    )
+    
+    if (!touch && e.touches.length > 0) {
+      const buttonAreaLeft = 16
+      const buttonAreaBottom = 16
+      const buttonAreaSize = 180
+      const screenHeight = window.innerHeight
+      const buttonAreaTop = screenHeight - buttonAreaBottom - buttonAreaSize
+      
+      touch = Array.from(e.touches).find(t => {
+        const isInButtonArea = 
+          t.clientX >= buttonAreaLeft && 
+          t.clientX <= buttonAreaLeft + buttonAreaSize &&
+          t.clientY >= buttonAreaTop && 
+          t.clientY <= screenHeight - buttonAreaBottom
+        return !isInButtonArea
+      })
+      
+      if (touch) {
+        activeTouchIdRef.current = touch.identifier
+        lookTouchRef.current = {
+          x: touch.clientX,
+          y: touch.clientY,
+          touchId: touch.identifier
+        }
+        accumulatedDeltaRef.current = { x: 0, y: 0 }
+      } else {
+        return
+      }
+    }
+    
+    if (touch && lookTouchRef.current) {
+      const deltaX = touch.clientX - lookTouchRef.current.x
+      const deltaY = touch.clientY - lookTouchRef.current.y
+      
+      accumulatedDeltaRef.current.x += deltaX
+      accumulatedDeltaRef.current.y += deltaY
+      
+      lookTouchRef.current = { 
+        x: touch.clientX, 
+        y: touch.clientY,
+        touchId: touch.identifier
+      }
+      
+      if (animationFrameRef.current === null) {
+        animationFrameRef.current = requestAnimationFrame(applyLookDelta)
+      }
+      
       e.preventDefault()
       e.stopPropagation()
     }
   }
 
-  const handleLookTouchMove = (e: React.TouchEvent) => {
-    if (e.touches.length === 1 && lookTouchRef.current) {
-      const touch = e.touches[0]
-      const screenWidth = window.innerWidth
-      // Проверяем, что движение все еще в правой части
-      if (touch.clientX > screenWidth * 0.5) {
-        const deltaX = touch.clientX - lookTouchRef.current.x
-        const deltaY = touch.clientY - lookTouchRef.current.y
-        
-        // Увеличиваем чувствительность для мобильных
-        onLook(deltaX * 1.5, deltaY * 1.5)
-        
-        lookTouchRef.current = { x: touch.clientX, y: touch.clientY }
-        e.preventDefault()
-        e.stopPropagation()
-      } else {
-        // Если палец ушел в левую часть, прекращаем поворот
+  const handleLookTouchEnd = (e: React.TouchEvent) => {
+    if (activeTouchIdRef.current !== null) {
+      const endedTouch = Array.from(e.changedTouches).find(
+        t => t.identifier === activeTouchIdRef.current
+      )
+      if (endedTouch) {
+        if (accumulatedDeltaRef.current.x !== 0 || accumulatedDeltaRef.current.y !== 0) {
+          const sensitivity = 1.8
+          onLook(
+            accumulatedDeltaRef.current.x * sensitivity,
+            accumulatedDeltaRef.current.y * sensitivity
+          )
+        }
         lookTouchRef.current = null
+        activeTouchIdRef.current = null
+        accumulatedDeltaRef.current = { x: 0, y: 0 }
+        if (animationFrameRef.current !== null) {
+          cancelAnimationFrame(animationFrameRef.current)
+          animationFrameRef.current = null
+        }
       }
     }
   }
 
-  const handleLookTouchEnd = (e: React.TouchEvent) => {
-    lookTouchRef.current = null
-    // Не preventDefault, чтобы не блокировать другие события
+  const handleLookTouchCancel = (e: React.TouchEvent) => {
+    if (activeTouchIdRef.current !== null) {
+      const cancelledTouch = Array.from(e.changedTouches).find(
+        t => t.identifier === activeTouchIdRef.current
+      )
+      if (cancelledTouch) {
+        lookTouchRef.current = null
+        activeTouchIdRef.current = null
+        accumulatedDeltaRef.current = { x: 0, y: 0 }
+        if (animationFrameRef.current !== null) {
+          cancelAnimationFrame(animationFrameRef.current)
+          animationFrameRef.current = null
+        }
+      }
+    }
   }
 
   return (
     <>
-      {/* Виртуальный джойстик для поворота камеры (правая часть экрана) */}
-      {/* Не перехватываем события в левой части, чтобы можно было взаимодействовать с экспонатами */}
       <div
-        className="absolute top-0 right-0 bottom-0 z-10 touch-none pointer-events-auto"
+        className="absolute top-0 left-0 right-0 bottom-0 z-10 touch-none pointer-events-auto"
         style={{ 
-          width: '50%',
-          left: '50%',
-          touchAction: 'none'
+          touchAction: 'none',
+          WebkitTouchCallout: 'none',
+          WebkitUserSelect: 'none',
+          userSelect: 'none',
+          WebkitTapHighlightColor: 'transparent',
         }}
-        onTouchStart={handleLookTouchStart}
-        onTouchMove={handleLookTouchMove}
-        onTouchEnd={handleLookTouchEnd}
+        onTouchStart={(e) => {
+          const touch = e.touches[0]
+          if (!touch) return
+          
+          const buttonAreaLeft = 16
+          const buttonAreaBottom = 16
+          const buttonAreaSize = 180
+          const screenHeight = window.innerHeight
+          const buttonAreaTop = screenHeight - buttonAreaBottom - buttonAreaSize
+          
+          const isInButtonArea = 
+            touch.clientX >= buttonAreaLeft && 
+            touch.clientX <= buttonAreaLeft + buttonAreaSize &&
+            touch.clientY >= buttonAreaTop && 
+            touch.clientY <= screenHeight - buttonAreaBottom
+          
+          if (!isInButtonArea) {
+            handleLookTouchStart(e)
+          }
+        }}
+        onTouchMove={(e) => {
+          if (e.touches.length > 0) {
+            const buttonAreaLeft = 16
+            const buttonAreaBottom = 16
+            const buttonAreaSize = 180
+            const screenHeight = window.innerHeight
+            const buttonAreaTop = screenHeight - buttonAreaBottom - buttonAreaSize
+            
+            if (activeTouchIdRef.current !== null) {
+              handleLookTouchMove(e)
+            } else {
+              const touchOutsideButtons = Array.from(e.touches).find(t => {
+                const isInButtonArea = 
+                  t.clientX >= buttonAreaLeft && 
+                  t.clientX <= buttonAreaLeft + buttonAreaSize &&
+                  t.clientY >= buttonAreaTop && 
+                  t.clientY <= screenHeight - buttonAreaBottom
+                return !isInButtonArea
+              })
+              
+              if (touchOutsideButtons) {
+                handleLookTouchStart(e)
+              }
+            }
+          }
+        }}
+        onTouchEnd={(e) => {
+          handleLookTouchEnd(e)
+        }}
+        onTouchCancel={(e) => {
+          handleLookTouchCancel(e)
+        }}
       />
 
-      {/* Виртуальные кнопки управления - компактный дизайн */}
       <div className="absolute bottom-4 left-4 z-20">
-        {/* Компактная сетка 3x3 */}
         <div className="grid grid-cols-3 gap-1.5">
-          {/* Пустая ячейка */}
           <div></div>
-          {/* Вперед */}
           <button
             onTouchStart={(e) => {
               e.preventDefault()
@@ -155,10 +299,8 @@ export default function MobileControls({ onMove, onLook }: MobileControlsProps) 
           >
             ↑
           </button>
-          {/* Пустая ячейка */}
           <div></div>
           
-          {/* Влево */}
           <button
             onTouchStart={(e) => {
               e.preventDefault()
@@ -182,9 +324,7 @@ export default function MobileControls({ onMove, onLook }: MobileControlsProps) 
           >
             ←
           </button>
-          {/* Центральная кнопка (можно использовать для паузы или меню) */}
           <div className="w-12 h-12"></div>
-          {/* Вправо */}
           <button
             onTouchStart={(e) => {
               e.preventDefault()
@@ -209,9 +349,7 @@ export default function MobileControls({ onMove, onLook }: MobileControlsProps) 
             →
           </button>
           
-          {/* Пустая ячейка */}
           <div></div>
-          {/* Назад */}
           <button
             onTouchStart={(e) => {
               e.preventDefault()
@@ -240,19 +378,6 @@ export default function MobileControls({ onMove, onLook }: MobileControlsProps) 
         </div>
       </div>
 
-      {/* Кнопка включения гироскопа */}
-      <div className="absolute top-4 right-4 z-20 md:hidden">
-        <button
-          onClick={() => setGyroEnabled(!gyroEnabled)}
-          className={`px-3 py-2 text-xs rounded-lg shadow-lg font-medium transition-colors ${
-            gyroEnabled 
-              ? 'bg-primary-600 text-white' 
-              : 'bg-white/90 backdrop-blur-sm text-gray-700 border border-gray-300'
-          }`}
-        >
-          {gyroEnabled ? 'Гироскоп: Вкл' : 'Гироскоп: Выкл'}
-        </button>
-      </div>
     </>
   )
 }

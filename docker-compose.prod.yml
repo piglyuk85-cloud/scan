@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  virtual-gallery:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      # Монтируем папки для сохранения данных
+      - ./public/models:/app/public/models
+      - ./public/images:/app/public/images
+      - ./prisma:/app/prisma
+      - ./storage:/app/storage
+      - ./qr-codes:/app/qr-codes
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=file:./prisma/prod.db
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

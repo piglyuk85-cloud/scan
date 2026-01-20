@@ -19,34 +19,25 @@ function Model({
   const { scene } = useGLTF(modelPath) as { scene: THREE.Group }
   const meshRef = useRef<THREE.Group>(null)
 
-  // Автоматическое центрирование и масштабирование модели
-  // Используем useMemo для стабильности - обрабатываем только один раз
   const { processedScene, modelCenter, modelSize } = useMemo(() => {
     if (!scene) return { processedScene: null, modelCenter: [0, 0, 0] as [number, number, number], modelSize: [0, 0, 0] as [number, number, number] }
 
-    // Клонируем сцену, чтобы не изменять оригинал
     const clonedScene = scene.clone()
     
-    // Вычисляем bounding box исходной сцены
     const box = new THREE.Box3().setFromObject(clonedScene)
     const size = box.getSize(new THREE.Vector3())
     const maxDim = Math.max(size.x, size.y, size.z)
     
-    // Целевой размер для модели в просмотре
     const TARGET_MAX_SIZE = 4.5
     
-    // Вычисляем масштаб
     const scale = maxDim > 0 ? TARGET_MAX_SIZE / maxDim : 1
     
-    // Применяем масштаб равномерно по всем осям
     clonedScene.scale.set(scale, scale, scale)
     
-    // Пересчитываем bounding box после масштабирования
     const scaledBox = new THREE.Box3().setFromObject(clonedScene)
     const scaledSize = scaledBox.getSize(new THREE.Vector3())
     const scaledCenter = scaledBox.getCenter(new THREE.Vector3())
     
-    // Центрируем модель по всем осям
     clonedScene.position.x = -scaledCenter.x
     clonedScene.position.y = -scaledCenter.y
     clonedScene.position.z = -scaledCenter.z
@@ -58,7 +49,6 @@ function Model({
     }
   }, [scene])
 
-  // Передаем данные о модели в родительский компонент
   useEffect(() => {
     if (processedScene && onModelLoaded) {
       onModelLoaded(modelCenter, modelSize)
@@ -83,18 +73,13 @@ function Model({
   )
 }
 
-// Компонент для настройки камеры на основе модели
 function AdaptiveCamera({ modelCenter, modelSize }: { modelCenter: [number, number, number], modelSize: [number, number, number] }) {
   const cameraDistance = useMemo(() => {
-    // Вычисляем оптимальное расстояние камеры на основе размера модели
     const maxSize = Math.max(modelSize[0], modelSize[1], modelSize[2])
-    // Расстояние должно быть примерно в 1.5-2 раза больше максимального размера
     return Math.max(6, maxSize * 1.8)
   }, [modelSize])
 
   const cameraHeight = useMemo(() => {
-    // Высота камеры зависит от высоты модели
-    // Для высоких моделей поднимаем камеру выше
     return modelSize[1] * 0.3
   }, [modelSize])
 

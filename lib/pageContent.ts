@@ -1,25 +1,64 @@
-import { promises as fs } from 'fs'
-import path from 'path'
 import { PageContent } from '@/types/pageContent'
-
-const filePath = path.join(process.cwd(), 'data', 'pageContent.json')
+import { prisma } from './prisma'
 
 export async function getPageContent(): Promise<PageContent> {
   try {
-    const fileContents = await fs.readFile(filePath, 'utf8')
-    return JSON.parse(fileContents)
+    const pageContent = await prisma.pageContent.findUnique({
+      where: { id: 'singleton' },
+    })
+
+    if (pageContent) {
+      const parsed = JSON.parse(pageContent.content) as PageContent
+      const defaultContent = getDefaultContent()
+      return {
+        home: {
+          ...defaultContent.home,
+          ...parsed.home,
+          buttons: parsed.home?.buttons || defaultContent.home.buttons,
+          sections: parsed.home?.sections || defaultContent.home.sections,
+        },
+        about: {
+          ...defaultContent.about,
+          ...parsed.about,
+        },
+        settings: {
+          ...defaultContent.settings,
+          ...parsed.settings,
+          navigation: parsed.settings?.navigation || defaultContent.settings.navigation,
+          catalog: parsed.settings?.catalog || defaultContent.settings.catalog,
+          exhibit: parsed.settings?.exhibit || defaultContent.settings.exhibit,
+          footer: {
+            ...defaultContent.settings.footer,
+            ...parsed.settings?.footer,
+            navigationTitle: parsed.settings?.footer?.navigationTitle || defaultContent.settings.footer.navigationTitle,
+            contactsTitle: parsed.settings?.footer?.contactsTitle || defaultContent.settings.footer.contactsTitle,
+            contactsAddress: parsed.settings?.footer?.contactsAddress || defaultContent.settings.footer.contactsAddress,
+          },
+        },
+      }
+    }
+
+    return getDefaultContent()
   } catch (error) {
-    console.error('Ошибка чтения pageContent.json:', error)
-    // Возвращаем дефолтные значения
+    console.error('Ошибка чтения контента из БД:', error)
     return getDefaultContent()
   }
 }
 
 export async function savePageContent(content: PageContent): Promise<void> {
   try {
-    await fs.writeFile(filePath, JSON.stringify(content, null, 2), 'utf8')
+    await prisma.pageContent.upsert({
+      where: { id: 'singleton' },
+      update: {
+        content: JSON.stringify(content),
+      },
+      create: {
+        id: 'singleton',
+        content: JSON.stringify(content),
+      },
+    })
   } catch (error) {
-    console.error('Ошибка записи pageContent.json:', error)
+    console.error('Ошибка записи контента в БД:', error)
     throw new Error('Не удалось сохранить контент')
   }
 }
@@ -42,6 +81,16 @@ function getDefaultContent(): PageContent {
         models: 'Модели',
         qrCodes: 'Коды',
         access: 'Доступ',
+      },
+      buttons: {
+        catalog: 'Каталог работ',
+        virtualGallery: 'Виртуальная галерея',
+        about: 'О галерее',
+        viewAll: 'Смотреть все →',
+        learnMore: 'Узнать больше',
+      },
+      sections: {
+        popularWorks: 'Популярные работы',
       },
     },
     about: {
@@ -74,8 +123,53 @@ function getDefaultContent(): PageContent {
         description: 'Описание',
         copyright: '© 2024',
         links: [],
+        navigationTitle: 'Навигация',
+        contactsTitle: 'Контакты',
+        contactsAddress: 'ВГУ имени П.М. Машерова\nХудожественный факультет\nг. Витебск',
+      },
+      navigation: {
+        home: 'Главная',
+        catalog: 'Каталог',
+        virtualGallery: 'Виртуальная галерея',
+        about: 'О галерее',
+      },
+      catalog: {
+        title: 'Каталог работ',
+        searchPlaceholder: 'Введите название, описание или имя автора...',
+        searchLabel: 'Поиск',
+        categoryLabel: 'Категория',
+        yearLabel: 'Год создания',
+        allCategories: 'Все категории',
+        allYears: 'Все годы',
+        only3D: 'Только с 3D моделями',
+        foundWorks: 'Найдено работ',
+        noWorksFound: 'Работы не найдены',
+        tryDifferentFilters: 'Попробуйте изменить параметры поиска или фильтры',
+      },
+      exhibit: {
+        backToCatalog: 'Вернуться в каталог',
+        editButton: 'Редактировать',
+        model3D: '3D Модель',
+        description: 'Описание',
+        aboutAuthor: 'Об авторе',
+        additionalInfo: 'Дополнительная информация',
+        creationInfo: 'Информация о создании',
+        technicalSpecs: 'Технические характеристики',
+        interestingFacts: 'Интересные факты',
+        qrCode: 'QR-код',
+        qrCodeDescription: 'Отсканируйте для быстрого доступа',
+        navigation: 'Навигация',
+        previous: 'Предыдущий',
+        next: 'Следующий',
+        creationDate: 'Дата создания',
+        dimensions: 'Размеры',
+        location: 'Местонахождение',
+        inventoryNumber: 'Инвентарный номер',
+        author: 'Автор/мастер',
+        course: 'Курс',
+        group: 'Группа',
+        supervisor: 'Научный руководитель',
       },
     },
   }
 }
-

@@ -1,8 +1,8 @@
 'use client'
 
-import React, { Suspense, useRef, useState, useEffect, useMemo } from 'react'
-import { Canvas, useFrame } from '@react-three/fiber'
-import { OrbitControls, PerspectiveCamera, Environment, Html } from '@react-three/drei'
+import React, { Suspense, useRef, useState, useEffect, useMemo, useCallback } from 'react'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
+import { OrbitControls, PerspectiveCamera, Environment, Html, useGLTF, Effects } from '@react-three/drei'
 import * as THREE from 'three'
 import { Exhibit } from '@/types/exhibit'
 import { useRouter } from 'next/navigation'
@@ -10,7 +10,15 @@ import SafeModelWrapper from './SafeModel'
 import FirstPersonControls from './FirstPersonControls'
 import MobileControls from './MobileControls'
 
-// Простой ErrorBoundary для обработки ошибок загрузки моделей
+const GALLERY_BOUNDS = {
+  minX: -24,
+  maxX: 24,
+  minZ: -24,
+  maxZ: 24,
+  minY: 0.5,
+  maxY: 7,
+}
+
 class ModelErrorBoundary extends React.Component<
   { children: React.ReactNode; fallback: React.ReactNode },
   { hasError: boolean }
@@ -40,456 +48,608 @@ interface VirtualGalleryProps {
   exhibits: Exhibit[]
 }
 
-// Компонент для одного экспоната в галерее
-function ExhibitInSpace({ 
-  exhibit, 
-  position, 
-  onClick, 
-  isHovered, 
-  onHover 
-}: { 
-  exhibit: Exhibit; 
-  position: [number, number, number]; 
-  onClick: () => void;
-  isHovered: boolean;
-  onHover: (hovered: boolean) => void;
+function ExhibitInSpace({
+  exhibit,
+  position,
+  scale,
+  rotationY,
+  onClick,
+  isMobile,
+}: {
+  exhibit: Exhibit
+  position: [number, number, number]
+  scale: number
+  rotationY: number
+  onClick: () => void
+  isMobile: boolean
 }) {
-  const meshRef = useRef<THREE.Group>(null)
+  const groupRef = useRef<THREE.Group>(null)
+  const modelGroupRef = useRef<THREE.Group>(null)
+  const [distanceToCamera, setDistanceToCamera] = useState<number>(Infinity)
+  const { camera } = useThree()
 
   useFrame((state) => {
-    if (meshRef.current && !isHovered) {
-      // Оптимизация: обновляем только если не наведена мышь
-      // Используем более легкое вычисление
-      meshRef.current.rotation.y = Math.sin(state.clock.elapsedTime * 0.5) * 0.1
+    if (groupRef.current) {
+      groupRef.current.rotation.y = rotationY + Math.sin(state.clock.elapsedTime * 0.5) * 0.1
+      
+      const objectPosition = new THREE.Vector3(...position)
+      const distance = camera.position.distanceTo(objectPosition)
+      setDistanceToCamera(distance)
+    }
+    if (modelGroupRef.current) {
+      modelGroupRef.current.scale.setScalar(scale)
     }
   })
-
-  const touchStartTime = useRef<number | null>(null)
-  const touchMoved = useRef<boolean>(false)
-  const isTouchDevice = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0)
+  
+  const isClose = distanceToCamera < 8 && distanceToCamera !== Infinity
 
   return (
-    <group
-      ref={meshRef}
-      position={position}
-    >
-      {/* Невидимая область для наведения - охватывает весь экспонат */}
+    <group ref={groupRef} position={position} rotation={[0, rotationY, 0]}>
       <mesh
         position={[0, 1, 0]}
-        onPointerOver={(e) => {
-          e.stopPropagation()
-          onHover(true)
-        }}
-        onPointerOut={(e) => {
-          e.stopPropagation()
-          onHover(false)
-        }}
-        onPointerEnter={(e) => {
-          e.stopPropagation()
-          onHover(true)
-        }}
-        onPointerLeave={(e) => {
-          e.stopPropagation()
-          onHover(false)
-        }}
-        onPointerDown={(e) => {
-          e.stopPropagation()
-          onHover(true)
-          // Запоминаем время начала касания для мобильных
-          if (isTouchDevice) {
-            touchStartTime.current = Date.now()
-            touchMoved.current = false
-          }
-        }}
-        onPointerMove={(e) => {
-          // Если есть движение, это не клик
-          if (isTouchDevice && touchStartTime.current !== null) {
-            touchMoved.current = true
-          }
-        }}
-        onPointerUp={(e) => {
-          e.stopPropagation()
-          // Простая проверка: если это было быстрое касание без движения - это клик
-          if (isTouchDevice && touchStartTime.current !== null) {
-            const deltaTime = Date.now() - touchStartTime.current
-            // Если касание было быстрым (менее 500ms) и без движения - это клик
-            if (deltaTime < 500 && !touchMoved.current) {
-              onClick()
-            }
-            touchStartTime.current = null
-            touchMoved.current = false
-          } else if (!isTouchDevice) {
-            // Для десктопа - обычный клик
-            onClick()
-          }
-        }}
         onClick={(e) => {
-          // Резервный обработчик для десктопа
           e.stopPropagation()
-          if (!isTouchDevice) {
-            onClick()
+          if (document.pointerLockElement) {
+            document.exitPointerLock()
           }
+          setTimeout(() => {
+            onClick()
+          }, 100)
         }}
       >
-        <boxGeometry args={[4, 4, 4]} />
+        <boxGeometry args={[3, 3, 3]} />
         <meshStandardMaterial 
-          visible={false}
-          transparent
+          visible={false} 
+          transparent 
           opacity={0}
         />
       </mesh>
-      
-      {/* Пьедестал или подставка */}
-      <mesh position={[0, -0.5, 0]}>
-        <cylinderGeometry args={[0.8, 0.8, 0.3, 16]} />
-        <meshStandardMaterial color="#d1d5db" />
-      </mesh>
 
-      {/* 3D модель экспоната - позиционируем над пьедесталом */}
-      <group position={[0, 0, 0]}>
-        {exhibit.has3DModel && exhibit.modelPath ? (
-          <ModelErrorBoundary 
-            key={`${exhibit.id}-${exhibit.modelPath}`}
-            fallback={
-              <mesh>
-                <boxGeometry args={[1, 1, 1]} />
-                <meshStandardMaterial color="#9ca3af" />
-              </mesh>
-            }
-          >
-            <SafeModelWrapper modelPath={exhibit.modelPath} />
-          </ModelErrorBoundary>
-        ) : (
-          // Заглушка если нет модели
-          <mesh>
-            <boxGeometry args={[1, 1, 1]} />
-            <meshStandardMaterial color="#9ca3af" />
-          </mesh>
-        )}
+      <group ref={modelGroupRef} scale={scale}>
+        <Suspense
+          fallback={
+            <mesh>
+              <boxGeometry args={[1, 1, 1]} />
+              <meshStandardMaterial color="#9ca3af" />
+            </mesh>
+          }
+        >
+          {exhibit.has3DModel && exhibit.modelPath ? (
+            <ModelErrorBoundary
+              key={`${exhibit.id}-${exhibit.modelPath}`}
+              fallback={
+                <mesh>
+                  <boxGeometry args={[1, 1, 1]} />
+                  <meshStandardMaterial color="#9ca3af" />
+                </mesh>
+              }
+            >
+              <SafeModelWrapper modelPath={exhibit.modelPath} />
+            </ModelErrorBoundary>
+          ) : (
+            <mesh>
+              <boxGeometry args={[1, 1, 1]} />
+              <meshStandardMaterial color="#9ca3af" />
+            </mesh>
+          )}
+        </Suspense>
       </group>
 
-      {/* Табличка с названием - фиксированная высота над пьедесталом */}
-      {isHovered && (
-        <Html position={[0, 2.5, 0]} center>
-          <div className="bg-white/95 backdrop-blur-sm px-4 py-3 rounded-lg shadow-xl border-2 border-primary-500 min-w-[200px]">
-            <h3 className="font-bold text-gray-800 text-sm">{exhibit.title}</h3>
-            {exhibit.studentName && (
-              <p className="text-xs text-gray-600 mt-1">Автор: {exhibit.studentName}</p>
-            )}
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                e.preventDefault()
-                onClick()
-              }}
-              onTouchStart={(e) => {
-                e.stopPropagation()
-                e.preventDefault()
-              }}
-              onTouchEnd={(e) => {
-                e.stopPropagation()
-                e.preventDefault()
-                onClick()
-              }}
-              onMouseDown={(e) => {
-                e.stopPropagation()
-                e.preventDefault()
-              }}
-              className="mt-2 w-full bg-primary-600 text-white text-xs py-2.5 rounded-lg hover:bg-primary-700 active:bg-primary-800 transition-colors font-semibold shadow-md touch-manipulation"
-              style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
-            >
-              Просмотреть
-            </button>
+      {isClose && (
+        <Html 
+          position={[0, 2.2, 0]} 
+          center
+          style={{
+            zIndex: 15,
+            pointerEvents: 'none',
+            display: 'none',
+          }}
+          transform
+        >
+          <div 
+            className="bg-black/80 backdrop-blur-md text-white px-3 py-1.5 rounded-md shadow-lg border border-white/10 pointer-events-none"
+            style={{
+              opacity: Math.max(0, Math.min(1, (8 - distanceToCamera) / 2)),
+              transform: `scale(${Math.max(0.85, Math.min(1, (8 - distanceToCamera) / 2))})`,
+            }}
+          >
+            <div className="font-medium text-xs leading-tight mb-0.5 max-w-[180px] truncate">{exhibit.title}</div>
+            <div className="text-[10px] opacity-70 leading-tight">Кликните для просмотра</div>
           </div>
         </Html>
       )}
-
     </group>
   )
 }
 
-
-
-// Компонент пола галереи
 function GalleryFloor() {
+  const floorRef = useRef<THREE.Mesh>(null)
+
   return (
-    <group>
-      {/* Основной пол - паркетный вид */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
-        <planeGeometry args={[100, 100, 20, 20]} />
-        <meshStandardMaterial 
-          color="#e8e5e0" 
-          roughness={0.6}
-          metalness={0.1}
-        />
-      </mesh>
-      {/* Плинтус по периметру */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.05, 0]}>
-        <ringGeometry args={[48, 50, 64]} />
-        <meshStandardMaterial color="#d4d1cc" side={THREE.DoubleSide} />
-      </mesh>
-    </group>
+    <mesh
+      ref={floorRef}
+      rotation={[-Math.PI / 2, 0, 0]}
+      position={[0, 0, 0]}
+      receiveShadow
+    >
+      <planeGeometry args={[50, 50, 40, 40]} />
+      <meshStandardMaterial
+        color="#8b6f47"
+        roughness={0.6}
+        metalness={0.01}
+        envMapIntensity={0.3}
+      />
+    </mesh>
   )
 }
 
-// Стены галереи
-function GalleryWalls() {
-  const wallHeight = 8
+function GalleryWalls({ isMobile }: { isMobile: boolean }) {
+  const wallHeight = 7
   const wallLength = 50
-  const wallThickness = 0.3
 
   return (
     <>
-      {/* Задняя стена */}
-      <group position={[0, wallHeight / 2, -wallLength / 2]}>
-        <mesh receiveShadow>
-          <boxGeometry args={[wallLength, wallHeight, wallThickness]} />
-          <meshStandardMaterial color="#fafafa" roughness={0.4} />
-        </mesh>
-        {/* Карниз сверху */}
-        <mesh position={[0, wallHeight / 2, 0]}>
-          <boxGeometry args={[wallLength, 0.2, 0.4]} />
-          <meshStandardMaterial color="#e5e5e5" />
-        </mesh>
-        {/* Плинтус снизу */}
-        <mesh position={[0, -wallHeight / 2, 0]}>
-          <boxGeometry args={[wallLength, 0.15, 0.35]} />
-          <meshStandardMaterial color="#d4d1cc" />
-        </mesh>
-      </group>
+      <mesh position={[0, wallHeight / 2, -25]} receiveShadow>
+        <boxGeometry args={[wallLength, wallHeight, 0.5]} />
+        <meshStandardMaterial 
+          color="#f5f0e8"
+          roughness={0.4} 
+          metalness={0.02} 
+          envMapIntensity={0.9}
+        />
+      </mesh>
+      <mesh position={[-25, wallHeight / 2, 0]} rotation={[0, Math.PI / 2, 0]} receiveShadow>
+        <boxGeometry args={[wallLength, wallHeight, 0.5]} />
+        <meshStandardMaterial 
+          color="#f5f0e8" 
+          roughness={0.4} 
+          metalness={0.02} 
+          envMapIntensity={0.9}
+        />
+      </mesh>
+      <mesh position={[25, wallHeight / 2, 0]} rotation={[0, Math.PI / 2, 0]} receiveShadow>
+        <boxGeometry args={[wallLength, wallHeight, 0.5]} />
+        <meshStandardMaterial 
+          color="#f5f0e8" 
+          roughness={0.4} 
+          metalness={0.02} 
+          envMapIntensity={0.9}
+        />
+      </mesh>
+      <mesh position={[0, wallHeight / 2, 25]} receiveShadow>
+        <boxGeometry args={[wallLength, wallHeight, 0.5]} />
+        <meshStandardMaterial 
+          color="#f5f0e8" 
+          roughness={0.4} 
+          metalness={0.02} 
+          envMapIntensity={0.9}
+        />
+      </mesh>
       
-      {/* Левая стена */}
-      <group position={[-wallLength / 2, wallHeight / 2, 0]} rotation={[0, Math.PI / 2, 0]}>
-        <mesh receiveShadow>
-          <boxGeometry args={[wallLength, wallHeight, wallThickness]} />
-          <meshStandardMaterial color="#fafafa" roughness={0.4} />
+      {[-25, 25].map((x) => (
+        <mesh 
+          key={`plinth-x-${x}`} 
+          position={[x, 0.35, 0]} 
+          rotation={[0, Math.PI / 2, 0]} 
+          receiveShadow
+          renderOrder={2}
+        >
+          <boxGeometry args={[50, 0.6, 0.5]} />
+          <meshStandardMaterial 
+            color="#6b5d4f"
+            roughness={0.5}
+            metalness={0.1}
+            polygonOffset={true}
+            polygonOffsetFactor={2}
+            polygonOffsetUnits={2}
+          />
         </mesh>
-        {/* Карниз сверху */}
-        <mesh position={[0, wallHeight / 2, 0]}>
-          <boxGeometry args={[wallLength, 0.2, 0.4]} />
-          <meshStandardMaterial color="#e5e5e5" />
+      ))}
+      {[-25, 25].map((z) => (
+        <mesh 
+          key={`plinth-z-${z}`} 
+          position={[0, 0.35, z]} 
+          receiveShadow
+          renderOrder={2}
+        >
+          <boxGeometry args={[50, 0.6, 0.5]} />
+          <meshStandardMaterial 
+            color="#6b5d4f"
+            roughness={0.5}
+            metalness={0.1}
+            polygonOffset={true}
+            polygonOffsetFactor={2}
+            polygonOffsetUnits={2}
+          />
         </mesh>
-        {/* Плинтус снизу */}
-        <mesh position={[0, -wallHeight / 2, 0]}>
-          <boxGeometry args={[wallLength, 0.15, 0.35]} />
-          <meshStandardMaterial color="#d4d1cc" />
-        </mesh>
-      </group>
+      ))}
       
-      {/* Правая стена */}
-      <group position={[wallLength / 2, wallHeight / 2, 0]} rotation={[0, Math.PI / 2, 0]}>
-        <mesh receiveShadow>
-          <boxGeometry args={[wallLength, wallHeight, wallThickness]} />
-          <meshStandardMaterial color="#fafafa" roughness={0.4} />
+      {[-25, 25].map((x) => (
+        <mesh key={`cornice-x-${x}`} position={[x, 6.88, 0]} rotation={[0, Math.PI / 2, 0]} receiveShadow>
+          <boxGeometry args={[50, 0.3, 0.35]} />
+          <meshStandardMaterial 
+            color="#c9a961"
+            roughness={0.25}
+            metalness={0.35}
+          />
         </mesh>
-        {/* Карниз сверху */}
-        <mesh position={[0, wallHeight / 2, 0]}>
-          <boxGeometry args={[wallLength, 0.2, 0.4]} />
-          <meshStandardMaterial color="#e5e5e5" />
+      ))}
+      {[-25, 25].map((z) => (
+        <mesh key={`cornice-z-${z}`} position={[0, 6.88, z]} receiveShadow>
+          <boxGeometry args={[50, 0.3, 0.35]} />
+          <meshStandardMaterial 
+            color="#c9a961"
+            roughness={0.25}
+            metalness={0.35}
+          />
         </mesh>
-        {/* Плинтус снизу */}
-        <mesh position={[0, -wallHeight / 2, 0]}>
-          <boxGeometry args={[wallLength, 0.15, 0.35]} />
-          <meshStandardMaterial color="#d4d1cc" />
-        </mesh>
-      </group>
+      ))}
       
-      {/* Передняя стена (сзади камеры) */}
-      <group position={[0, wallHeight / 2, wallLength / 2]}>
-        <mesh receiveShadow>
-          <boxGeometry args={[wallLength, wallHeight, wallThickness]} />
-          <meshStandardMaterial color="#fafafa" roughness={0.4} />
+      {(isMobile ? [-10, 0, 10] : [-20, -10, 0, 10, 20]).map((x) => (
+        <mesh key={`panel-x-${x}`} position={[x, 3.5, -24.75]} receiveShadow>
+          <boxGeometry args={[8, 4, 0.1]} />
+          <meshStandardMaterial 
+            color="#e8e0d5"
+            roughness={0.5}
+            metalness={0.05}
+          />
         </mesh>
-        {/* Карниз сверху */}
-        <mesh position={[0, wallHeight / 2, 0]}>
-          <boxGeometry args={[wallLength, 0.2, 0.4]} />
-          <meshStandardMaterial color="#e5e5e5" />
+      ))}
+      {(isMobile ? [-10, 0, 10] : [-20, -10, 0, 10, 20]).map((z) => (
+        <mesh key={`panel-z-${z}`} position={[-24.75, 3.5, z]} rotation={[0, Math.PI / 2, 0]} receiveShadow>
+          <boxGeometry args={[8, 4, 0.1]} />
+          <meshStandardMaterial 
+            color="#e8e0d5"
+            roughness={0.5}
+            metalness={0.05}
+          />
         </mesh>
-        {/* Плинтус снизу */}
-        <mesh position={[0, -wallHeight / 2, 0]}>
-          <boxGeometry args={[wallLength, 0.15, 0.35]} />
-          <meshStandardMaterial color="#d4d1cc" />
-        </mesh>
-      </group>
+      ))}
+      
+      {!isMobile && ([-18, -8, 2, 12, 22].map((x) => (
+        <group key={`frame-x-${x}`} position={[x, 5.5, -24.8]}>
+          <mesh receiveShadow>
+            <boxGeometry args={[3, 1.5, 0.15]} />
+            <meshStandardMaterial 
+              color="#8b7355"
+              roughness={0.4}
+              metalness={0.1}
+            />
+          </mesh>
+          <mesh position={[0, 0, 0.08]}>
+            <boxGeometry args={[2.6, 1.1, 0.05]} />
+            <meshStandardMaterial 
+              color="#d4c4b0"
+              roughness={0.6}
+              metalness={0.0}
+            />
+          </mesh>
+        </group>
+      )))}
+      
+      {(isMobile ? [3.5] : [1.5, 5.5]).map((y) => (
+        <>
+          {[-25, 25].map((x) => (
+            <mesh key={`molding-h-x-${x}-y-${y}`} position={[x, y, -24.9]} rotation={[0, Math.PI / 2, 0]} receiveShadow>
+              <boxGeometry args={[50, 0.05, 0.1]} />
+              <meshStandardMaterial 
+                color="#c9a961"
+                roughness={0.3}
+                metalness={0.4}
+              />
+            </mesh>
+          ))}
+          {[-25, 25].map((z) => (
+            <mesh key={`molding-h-z-${z}-y-${y}`} position={[-24.9, y, z]} receiveShadow>
+              <boxGeometry args={[50, 0.05, 0.1]} />
+              <meshStandardMaterial 
+                color="#c9a961"
+                roughness={0.3}
+                metalness={0.4}
+              />
+            </mesh>
+          ))}
+        </>
+      ))}
     </>
   )
 }
 
-// Потолок галереи
-function GalleryCeiling() {
+function GalleryCeiling({ isMobile }: { isMobile: boolean }) {
   return (
-    <group>
-      {/* Основной потолок */}
-      <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 8, 0]}>
-        <planeGeometry args={[100, 100]} />
-        <meshStandardMaterial color="#f5f5f5" roughness={0.3} />
+    <>
+      <mesh position={[0, 7, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <planeGeometry args={[50, 50, 30, 30]} />
+        <meshStandardMaterial 
+          color="#e8e3d8"
+          roughness={0.5} 
+          metalness={0.02} 
+          envMapIntensity={0.8}
+          side={THREE.DoubleSide}
+        />
       </mesh>
-      {/* Декоративные балки/карнизы */}
-      <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 7.9, 0]}>
-        <ringGeometry args={[48, 50, 64]} />
-        <meshStandardMaterial color="#e5e5e5" side={THREE.DoubleSide} />
+      
+      {[-25, 25].map((x) => (
+        <mesh key={`molding-x-${x}`} position={[x, 6.95, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+          <ringGeometry args={[23, 24.5, 64]} />
+          <meshStandardMaterial 
+            color="#d4af37"
+            roughness={0.2}
+            metalness={0.4}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+      ))}
+      
+      <mesh position={[0, 6.97, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <ringGeometry args={[2, 3, 32]} />
+        <meshStandardMaterial 
+          color="#c9a961"
+          roughness={0.15}
+          metalness={0.5}
+          side={THREE.DoubleSide}
+        />
       </mesh>
-    </group>
+      
+      {!isMobile && (
+        [
+          [-20, -20], [-20, 20], [20, -20], [20, 20]
+        ].map(([x, z], idx) => (
+          <mesh key={`corner-rosette-${idx}`} position={[x, 6.96, z]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+            <ringGeometry args={[1, 1.5, 24]} />
+            <meshStandardMaterial 
+              color="#c9a961"
+              roughness={0.15}
+              metalness={0.5}
+              side={THREE.DoubleSide}
+            />
+          </mesh>
+        ))
+      )}
+      
+      {!isMobile && (
+        <>
+          {[-20, 20].map((x) => (
+            <mesh key={`side-rosette-x-${x}`} position={[x, 6.96, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+              <ringGeometry args={[1.2, 1.8, 24]} />
+              <meshStandardMaterial 
+                color="#c9a961"
+                roughness={0.15}
+                metalness={0.5}
+                side={THREE.DoubleSide}
+              />
+            </mesh>
+          ))}
+          {[-20, 20].map((z) => (
+            <mesh key={`side-rosette-z-${z}`} position={[0, 6.96, z]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+              <ringGeometry args={[1.2, 1.8, 24]} />
+              <meshStandardMaterial 
+                color="#c9a961"
+                roughness={0.15}
+                metalness={0.5}
+                side={THREE.DoubleSide}
+              />
+            </mesh>
+          ))}
+        </>
+      )}
+    </>
   )
+}
+
+function CameraBounds({ isOrbitMode, isMobile }: { isOrbitMode: boolean; isMobile: boolean }) {
+  const { camera } = useThree()
+
+  useFrame(() => {
+    if (!isOrbitMode || !isMobile) {
+      camera.position.x = Math.max(
+        GALLERY_BOUNDS.minX + 1,
+        Math.min(GALLERY_BOUNDS.maxX - 1, camera.position.x)
+      )
+      camera.position.z = Math.max(
+        GALLERY_BOUNDS.minZ + 1,
+        Math.min(GALLERY_BOUNDS.maxZ - 1, camera.position.z)
+      )
+      camera.position.y = Math.max(
+        GALLERY_BOUNDS.minY,
+        Math.min(GALLERY_BOUNDS.maxY, camera.position.y)
+      )
+    }
+  })
+  return null
 }
 
 export default function VirtualGallery({ exhibits }: VirtualGalleryProps) {
   const router = useRouter()
-  const [controlsMode, setControlsMode] = useState<'orbit' | 'firstperson'>('firstperson')
-  const [hoveredExhibitId, setHoveredExhibitId] = useState<string | null>(null)
   const [isMobile, setIsMobile] = useState(false)
 
-  // Определяем мобильное устройство
   useEffect(() => {
     const checkMobile = () => {
-      const isMobileDevice = 
+      const isMobileDevice =
         ('ontouchstart' in window || navigator.maxTouchPoints > 0) &&
         window.innerWidth < 768
       setIsMobile(isMobileDevice)
     }
-    
+
     checkMobile()
     window.addEventListener('resize', checkMobile)
     return () => window.removeEventListener('resize', checkMobile)
   }, [])
 
-  // Размещаем экспонаты в пространстве (сетка)
-  // Используем useMemo для стабильности позиций
-  const positions = useMemo(() => {
-    const positions: [number, number, number][] = []
-    const spacing = 6 // Увеличиваем расстояние между экспонатами
-    const rows = Math.ceil(Math.sqrt(exhibits.length))
-    
-    for (let i = 0; i < exhibits.length; i++) {
-      const row = Math.floor(i / rows)
-      const col = i % rows
-      const x = (col - (rows - 1) / 2) * spacing // Центрируем по X
-      const z = -row * spacing - 5 // Размещаем вглубь
-      positions.push([x, 0, z])
-    }
-    
-    return positions
-  }, [exhibits.length])
+  const exhibitData = useMemo(() => {
+    const visibleExhibits = exhibits.filter(
+      (ex) => ex.visibleInGallery !== false && (ex.isPublic !== false)
+    )
+    const spacing = 6
+    const rows = Math.ceil(Math.sqrt(visibleExhibits.length))
+    let autoIndex = 0
 
-  const handleExhibitClick = (exhibitId: string) => {
-    router.push(`/exhibit/${exhibitId}`)
-  }
+    return visibleExhibits.map((exhibit) => {
+      let pos: [number, number, number]
+      
+      if (
+        exhibit.galleryPositionX !== undefined &&
+        exhibit.galleryPositionY !== undefined &&
+        exhibit.galleryPositionZ !== undefined
+      ) {
+        pos = [
+          Math.max(GALLERY_BOUNDS.minX, Math.min(GALLERY_BOUNDS.maxX, exhibit.galleryPositionX)),
+          Math.max(GALLERY_BOUNDS.minY, Math.min(GALLERY_BOUNDS.maxY, exhibit.galleryPositionY)),
+          Math.max(GALLERY_BOUNDS.minZ, Math.min(GALLERY_BOUNDS.maxZ, exhibit.galleryPositionZ)),
+        ]
+      } else {
+        const row = Math.floor(autoIndex / rows)
+        const col = autoIndex % rows
+        const x = Math.max(GALLERY_BOUNDS.minX, Math.min(GALLERY_BOUNDS.maxX, (col - (rows - 1) / 2) * spacing))
+        const z = Math.max(GALLERY_BOUNDS.minZ, Math.min(GALLERY_BOUNDS.maxZ, -row * spacing - 5))
+        autoIndex++
+        pos = [x, 0, z]
+      }
+      
+      return {
+        exhibit,
+        position: pos,
+        scale: exhibit.galleryScale ?? 1.0,
+        rotationY: exhibit.galleryRotationY ?? 0,
+      }
+    })
+  }, [exhibits])
 
-  // Обработчики для мобильного управления
-  const handleMobileMove = (direction: 'forward' | 'backward' | 'left' | 'right', active: boolean) => {
-    if ((window as any).__mobileMoveHandler) {
-      ;(window as any).__mobileMoveHandler(direction, active)
-    }
-  }
+  const handleExhibitClick = useCallback(
+    (exhibitId: string) => {
+      router.push(`/exhibit/${exhibitId}`)
+    },
+    [router]
+  )
 
-  const handleMobileLook = (deltaX: number, deltaY: number) => {
+
+  const handleMobileMove = useCallback(
+    (direction: 'forward' | 'backward' | 'left' | 'right', active: boolean) => {
+      if ((window as any).__mobileMoveHandler) {
+        ;(window as any).__mobileMoveHandler(direction, active)
+      }
+    },
+    []
+  )
+
+  const handleMobileLook = useCallback((deltaX: number, deltaY: number) => {
     if ((window as any).__mobileLookHandler) {
       ;(window as any).__mobileLookHandler(deltaX, deltaY)
     }
-  }
+  }, [])
+
+  const controlsMode = 'firstperson' as const
 
   return (
-    <div className="relative w-full h-screen bg-gray-100">
-      {/* Указатель по центру экрана (только для десктопа) */}
+    <div className={`relative w-full ${isMobile ? 'h-[calc(100vh-6rem)]' : 'h-screen'} bg-gradient-to-b from-stone-50 via-amber-50/20 to-stone-50`}>
       {!isMobile && (
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none">
-          <div className="relative">
-            {/* Центральная точка */}
-            <div className="w-2 h-2 rounded-full bg-gray-800/60 border border-gray-600/40 shadow-lg"></div>
-            {/* Горизонтальная линия */}
-            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-8 h-px bg-gray-800/40"></div>
-            {/* Вертикальная линия */}
-            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 h-8 w-px bg-gray-800/40"></div>
-          </div>
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-none">
+          <div className="w-2 h-2 bg-white rounded-full opacity-80"></div>
         </div>
       )}
 
-      {/* Мобильные контролы */}
       {isMobile && controlsMode === 'firstperson' && (
         <MobileControls onMove={handleMobileMove} onLook={handleMobileLook} />
       )}
 
+
       <Canvas
-        gl={{ 
-          antialias: !isMobile, // Отключаем антиалиасинг на мобильных для производительности
+        gl={{
+          antialias: true,
           alpha: false,
           powerPreference: 'high-performance',
           stencil: false,
-          depth: true
+          depth: true,
+          preserveDrawingBuffer: false,
+          toneMapping: THREE.ACESFilmicToneMapping,
+          toneMappingExposure: 1.2,
+          precision: isMobile ? 'mediump' : 'highp',
         }}
-        shadows={false} // Отключаем тени для производительности
-        dpr={isMobile ? [1, 1.2] : [1, 1.5]} // Меньший pixel ratio на мобильных
-        performance={{ min: 0.5 }} // Минимальный FPS
+        shadows={!isMobile}
+        dpr={isMobile ? [1, Math.min(typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1, 2)] : [1, 2]}
+        performance={{ min: 0.5, max: 1 }}
         style={{ width: '100%', height: '100%', touchAction: 'none' }}
+        frameloop="always"
       >
-        {/* Освещение - галерейное мягкое освещение */}
-        <ambientLight intensity={0.6} />
-        {/* Основной источник света */}
+        <ambientLight intensity={0.35} color="#fff8e1" />
         <directionalLight
-          position={[10, 8, 5]}
-          intensity={0.8}
-          castShadow={false}
+          position={[10, 10, 5]}
+          intensity={1.2}
+          castShadow={!isMobile}
+          shadow-mapSize-width={isMobile ? 1024 : 2048}
+          shadow-mapSize-height={isMobile ? 1024 : 2048}
+          shadow-camera-far={50}
+          shadow-camera-left={-25}
+          shadow-camera-right={25}
+          shadow-camera-top={25}
+          shadow-camera-bottom={-25}
+          color="#fff8e1"
         />
-        {/* Дополнительное освещение для равномерности */}
-        <directionalLight
-          position={[-10, 8, -5]}
-          intensity={0.4}
-          castShadow={false}
+        <directionalLight position={[-10, 8, -5]} intensity={0.6} color="#fff8e1" />
+        <pointLight position={[0, 6.3, 0]} intensity={2.5} distance={42} decay={2} color="#fff8e1" />
+        {isMobile ? (
+          <>
+            <pointLight position={[-20, 5.5, -20]} intensity={1.2} distance={35} decay={2} color="#fff8e1" />
+            <pointLight position={[20, 5.5, 20]} intensity={1.2} distance={35} decay={2} color="#fff8e1" />
+          </>
+        ) : (
+          <>
+            <pointLight position={[-20, 5.5, -20]} intensity={0.9} distance={32} decay={2} color="#fff8e1" />
+            <pointLight position={[20, 5.5, -20]} intensity={0.9} distance={32} decay={2} color="#fff8e1" />
+            <pointLight position={[-20, 5.5, 20]} intensity={0.9} distance={32} decay={2} color="#fff8e1" />
+            <pointLight position={[20, 5.5, 20]} intensity={0.9} distance={32} decay={2} color="#fff8e1" />
+          </>
+        )}
+        <spotLight 
+          position={[0, 5, 0]} 
+          angle={Math.PI / 2.2} 
+          penumbra={0.7} 
+          intensity={2.0} 
+          distance={48} 
+          decay={2} 
+          color="#fff8e1"
+          castShadow={!isMobile}
         />
-        {/* Верхнее освещение (как в галереях) */}
-        <pointLight position={[0, 7, 0]} intensity={0.5} distance={30} decay={2} />
-        <pointLight position={[-15, 7, -15]} intensity={0.3} distance={25} decay={2} />
-        <pointLight position={[15, 7, -15]} intensity={0.3} distance={25} decay={2} />
-        <Environment preset="city" />
+        {!isMobile && (
+          <>
+            <pointLight position={[0, 4.5, -15]} intensity={0.5} distance={28} decay={2} color="#fff8e1" />
+            <pointLight position={[0, 4.5, 15]} intensity={0.5} distance={28} decay={2} color="#fff8e1" />
+          </>
+        )}
+        <Environment preset="sunset" />
 
-        {/* Камера */}
         <PerspectiveCamera makeDefault position={[0, 2, 10]} fov={75} />
 
-        {/* Пол, стены и потолок */}
-        <GalleryFloor />
-        <GalleryWalls />
-        <GalleryCeiling />
+        <CameraBounds isOrbitMode={false} isMobile={isMobile} />
 
-        {/* Экспонаты */}
-        {exhibits.map((exhibit, index) => (
-          <ExhibitInSpace
-            key={exhibit.id}
-            exhibit={exhibit}
-            position={positions[index]}
-            onClick={() => handleExhibitClick(exhibit.id)}
-            isHovered={hoveredExhibitId === exhibit.id}
-            onHover={(hovered) => {
-              if (hovered) {
-                setHoveredExhibitId(exhibit.id)
-              } else if (hoveredExhibitId === exhibit.id) {
-                setHoveredExhibitId(null)
-              }
-            }}
-          />
-        ))}
+        <Suspense fallback={null}>
+          <GalleryFloor />
+          <GalleryWalls isMobile={isMobile} />
+          <GalleryCeiling isMobile={isMobile} />
+        </Suspense>
 
-        {/* Управление камерой */}
-        {controlsMode === 'orbit' ? (
-          <OrbitControls
-            enableZoom={true}
-            enablePan={true}
-            minDistance={0.5}
-            maxDistance={50}
-            minPolarAngle={0}
-            maxPolarAngle={Math.PI / 2}
-            touches={{
-              ONE: isMobile ? THREE.TOUCH.ROTATE : THREE.TOUCH.ROTATE,
-              TWO: isMobile ? THREE.TOUCH.DOLLY_PAN : THREE.TOUCH.DOLLY_PAN,
-            }}
-          />
-        ) : (
-          <FirstPersonControls 
+        <Suspense fallback={null}>
+          {exhibitData.map(({ exhibit, position, scale, rotationY }) => (
+            <ExhibitInSpace
+              key={exhibit.id}
+              exhibit={exhibit}
+              position={position}
+              scale={scale}
+              rotationY={rotationY}
+              onClick={() => handleExhibitClick(exhibit.id)}
+              isMobile={isMobile}
+            />
+          ))}
+        </Suspense>
+
+        {controlsMode === 'firstperson' && (
+          <FirstPersonControls
             onMobileMove={isMobile ? handleMobileMove : undefined}
             onMobileLook={isMobile ? handleMobileLook : undefined}
+            bounds={isMobile ? undefined : GALLERY_BOUNDS}
           />
         )}
       </Canvas>
     </div>
   )
 }
-

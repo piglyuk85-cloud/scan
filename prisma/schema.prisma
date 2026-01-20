@@ -1,0 +1,60 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Exhibit {
+  id                String   @id @default(uuid())
+  inventoryNumber   String?
+  title             String
+  description       String
+  fullDescription   String?  @default("")
+  creationDate      String?
+  studentName       String?
+  studentCourse     String?
+  studentGroup      String?
+  supervisor        String?
+  supervisorPosition String?
+  supervisorRank    String?
+  supervisorDepartment String?
+  dimensions        String?
+  currentLocation   String?
+  isPublic          Boolean  @default(true)
+  
+  category          String
+  year              String?
+  modelPath         String?
+  has3DModel        Boolean  @default(false)
+  previewImage      String?
+  images            String   @default("[]")
+  creationInfo      String?  @default("")
+  technicalSpecs    String   @default("{}")
+  interestingFacts   String   @default("[]")
+  relatedExhibits   String   @default("[]")
+  galleryPositionX  Float?
+  galleryPositionY  Float?   @default(0)
+  galleryPositionZ  Float?
+  galleryScale       Float?   @default(1.0)
+  galleryRotationY   Float?   @default(0)
+  visibleInGallery   Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([category])
+  @@index([year])
+  @@index([studentName])
+  @@index([visibleInGallery])
+  @@index([isPublic])
+}
+
+model PageContent {
+  id        String   @id @default("singleton")
+  content   String
+  updatedAt DateTime @updatedAt
+
+  @@map("page_content")
+}
