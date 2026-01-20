@@ -6,6 +6,8 @@ export interface Exhibit {
   title: string
   // 3. Текст для превью/карточки (2-3 предложения)
   description: string
+  // Альтернативное поле превью-текста для обратной совместимости
+  previewText?: string
   // 4. Полное описание: история создания, стилистика, символика
   fullDescription?: string
   // 5. Дата создания
