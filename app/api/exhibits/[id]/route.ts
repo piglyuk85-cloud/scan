@@ -200,13 +200,13 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    // Проверяем, является ли пользователь супер-администратором
+    // Проверяем, является ли пользователь администратором
     const isAdmin = request.headers.get('x-admin-auth') === 'true' || 
                     request.cookies.get('admin_auth')?.value === 'true'
     const adminRole = request.headers.get('x-admin-role') || 
                       request.cookies.get('admin_role')?.value || 'admin'
 
-    if (!isAdmin || adminRole !== 'super') {
+    if (!isAdmin) {
       return NextResponse.json(
         { error: 'Недостаточно прав для удаления экспонатов' },
         { status: 403 }

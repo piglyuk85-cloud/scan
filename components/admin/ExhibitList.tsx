@@ -317,7 +317,7 @@ export default function ExhibitList({
                       >
                         Редактировать
                       </button>
-                      {userRole === 'super' && (
+                      {(userRole === 'super' || userRole === 'admin') && (
                         <button
                           onClick={() => onDelete(exhibit.id)}
                           className="text-red-600 hover:text-red-900 hover:underline"

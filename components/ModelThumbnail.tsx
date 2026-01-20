@@ -1,13 +1,37 @@
 'use client'
 
-import React, { Suspense, useMemo } from 'react'
-import { Canvas } from '@react-three/fiber'
+import React, { Suspense, useMemo, useEffect, useRef, useState } from 'react'
+import { Canvas, useThree } from '@react-three/fiber'
 import { OrbitControls, PerspectiveCamera, Environment, useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
 
 interface ModelThumbnailProps {
   modelPath: string
   className?: string
+}
+
+function ContextCleanup() {
+  const { gl } = useThree()
+  
+  useEffect(() => {
+    return () => {
+      try {
+        const canvas = gl.domElement
+        const context = canvas.getContext('webgl') || canvas.getContext('webgl2')
+        if (context) {
+          const loseContext = (context as WebGLRenderingContext).getExtension('WEBGL_lose_context')
+          if (loseContext) {
+            loseContext.loseContext()
+          }
+        }
+        gl.dispose()
+      } catch (e) {
+        console.warn('Ошибка очистки WebGL контекста:', e)
+      }
+    }
+  }, [gl])
+  
+  return null
 }
 
 function ModelPreview({ modelPath }: { modelPath: string }) {
@@ -75,20 +99,65 @@ class ModelThumbnailErrorBoundary extends React.Component<
 }
 
 export default function ModelThumbnail({ modelPath, className }: ModelThumbnailProps) {
+  const [isVisible, setIsVisible] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            setIsVisible(true)
+            observer.disconnect()
+          }
+        })
+      },
+      {
+        rootMargin: '50px',
+        threshold: 0.01,
+      }
+    )
+
+    observer.observe(container)
+
+    return () => {
+      observer.disconnect()
+    }
+  }, [])
+
   const fallback = (
     <div className={`relative w-full h-full bg-gray-100 flex items-center justify-center ${className || ''}`}>
       <div className="text-gray-400 text-xs">3D</div>
     </div>
   )
 
+  if (!isVisible) {
+    return (
+      <div ref={containerRef} className={`relative w-full h-full bg-gray-100 flex items-center justify-center ${className || ''}`}>
+        <div className="text-gray-400 text-xs">3D</div>
+      </div>
+    )
+  }
+
   return (
     <ModelThumbnailErrorBoundary fallback={fallback}>
-      <div className={`relative w-full h-full bg-gray-100 ${className || ''}`}>
+      <div ref={containerRef} className={`relative w-full h-full bg-gray-100 ${className || ''}`}>
         <Canvas
-          gl={{ antialias: false, alpha: true }}
+          gl={{ 
+            antialias: false, 
+            alpha: true,
+            powerPreference: 'low-power',
+            preserveDrawingBuffer: false,
+          }}
           camera={{ position: [0, 0, 5], fov: 50 }}
           style={{ width: '100%', height: '100%' }}
+          dpr={[1, 1.5]}
+          frameloop="demand"
         >
+          <ContextCleanup />
           <ambientLight intensity={0.6} />
           <directionalLight position={[10, 10, 5]} intensity={0.8} />
           <directionalLight position={[-10, 5, -5]} intensity={0.4} />

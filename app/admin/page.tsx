@@ -120,22 +120,17 @@ export default function AdminPage() {
   }
 
   const handleDelete = async (id: string) => {
-    // Проверяем права доступа
-    if (userRole !== 'super') {
-      alert('У вас нет прав для удаления экспонатов. Обратитесь к супер-администратору.')
-      return
-    }
-
     if (!confirm('Вы уверены, что хотите удалить эту работу?')) {
       return
     }
 
     try {
+      const role = localStorage.getItem('admin_role') || 'admin'
       const response = await fetch(`/api/exhibits/${id}`, {
         method: 'DELETE',
         headers: {
           'x-admin-auth': 'true',
-          'x-admin-role': 'super',
+          'x-admin-role': role,
         },
       })
 
