@@ -18,11 +18,10 @@ export default function AdminPage() {
   const [showForm, setShowForm] = useState(false)
   const [activeSection, setActiveSection] = useState<'exhibits' | 'content'>('exhibits')
 
-  // Система аутентификации с двумя типами администраторов
   const ADMIN_CREDENTIALS = {
-    admin: { password: 'adminvsu2025', role: 'admin' }, // Обычный админ - только добавление и редактирование
-    super: { password: '12281992', role: 'super' }, // Супер-админ - полный доступ
-  }
+    admin: { password: 'adminvsu2025', role: 'admin' },
+    super: { password: '12281992', role: 'super' },
+  } as const
 
   useEffect(() => {
     // Проверяем, авторизован ли пользователь
