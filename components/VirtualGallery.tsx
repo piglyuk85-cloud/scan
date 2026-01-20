@@ -89,9 +89,6 @@ function ExhibitInSpace({
   const groupRef = useRef<THREE.Group>(null)
   const modelGroupRef = useRef<THREE.Group>(null)
   const [distanceToCamera, setDistanceToCamera] = useState<number>(Infinity)
-  const [isModelActive, setIsModelActive] = useState<boolean>(!isMobile)
-  const modelActiveRef = useRef<boolean>(!isMobile)
-  const activationTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const { camera } = useThree()
 
   useFrame((state) => {
@@ -101,45 +98,11 @@ function ExhibitInSpace({
       const objectPosition = new THREE.Vector3(...position)
       const distance = camera.position.distanceTo(objectPosition)
       setDistanceToCamera(distance)
-
-      if (isMobile) {
-        const ACTIVATE_DISTANCE = 16
-        const DEACTIVATE_DISTANCE = 20
-        const shouldBeActive =
-          distance !== Infinity &&
-          (modelActiveRef.current
-            ? distance < DEACTIVATE_DISTANCE
-            : distance < ACTIVATE_DISTANCE)
-
-        if (shouldBeActive !== modelActiveRef.current) {
-          if (activationTimeoutRef.current) {
-            clearTimeout(activationTimeoutRef.current)
-          }
-          
-          if (shouldBeActive) {
-            activationTimeoutRef.current = setTimeout(() => {
-              modelActiveRef.current = true
-              setIsModelActive(true)
-            }, 300)
-          } else {
-            modelActiveRef.current = false
-            setIsModelActive(false)
-          }
-        }
-      }
     }
     if (modelGroupRef.current) {
       modelGroupRef.current.scale.setScalar(scale)
     }
   })
-
-  useEffect(() => {
-    return () => {
-      if (activationTimeoutRef.current) {
-        clearTimeout(activationTimeoutRef.current)
-      }
-    }
-  }, [])
   
   const isClose = distanceToCamera < 8 && distanceToCamera !== Infinity
 
@@ -167,8 +130,17 @@ function ExhibitInSpace({
 
       <group ref={modelGroupRef} scale={scale}>
         {exhibit.has3DModel && exhibit.modelPath ? (
-          (isModelActive || !isMobile) ? (
-            <Suspense
+          <Suspense
+            fallback={
+              <mesh>
+                <boxGeometry args={[1, 1, 1]} />
+                <meshStandardMaterial color="#9ca3af" />
+              </mesh>
+            }
+          >
+            <ModelErrorBoundary
+              key={`${exhibit.id}-${exhibit.modelPath}`}
+              modelPath={exhibit.modelPath}
               fallback={
                 <mesh>
                   <boxGeometry args={[1, 1, 1]} />
@@ -176,25 +148,9 @@ function ExhibitInSpace({
                 </mesh>
               }
             >
-              <ModelErrorBoundary
-                key={`${exhibit.id}-${exhibit.modelPath}-${isModelActive}`}
-                modelPath={exhibit.modelPath}
-                fallback={
-                  <mesh>
-                    <boxGeometry args={[1, 1, 1]} />
-                    <meshStandardMaterial color="#9ca3af" />
-                  </mesh>
-                }
-              >
-                <SafeModelWrapper modelPath={exhibit.modelPath} />
-              </ModelErrorBoundary>
-            </Suspense>
-          ) : (
-            <mesh>
-              <boxGeometry args={[1, 1, 1]} />
-              <meshStandardMaterial color="#9ca3af" />
-            </mesh>
-          )
+              <SafeModelWrapper modelPath={exhibit.modelPath} />
+            </ModelErrorBoundary>
+          </Suspense>
         ) : (
           <mesh>
             <boxGeometry args={[1, 1, 1]} />
