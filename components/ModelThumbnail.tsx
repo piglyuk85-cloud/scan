@@ -4,7 +4,6 @@ import React, { Suspense, useMemo, useEffect, useRef, useState } from 'react'
 import { Canvas, useThree } from '@react-three/fiber'
 import { OrbitControls, PerspectiveCamera, Environment, useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
-import ModelThumbnailRenderer from './ModelThumbnailRenderer'
 
 interface ModelThumbnailProps {
   modelPath: string
@@ -20,16 +19,22 @@ function ContextCleanup() {
     return () => {
       try {
         const canvas = gl.domElement
-        const context = canvas.getContext('webgl') || canvas.getContext('webgl2')
-        if (context) {
-          const loseContext = (context as WebGLRenderingContext).getExtension('WEBGL_lose_context')
-          if (loseContext) {
-            loseContext.loseContext()
+        if (canvas) {
+          const context = canvas.getContext('webgl') || canvas.getContext('webgl2')
+          if (context) {
+            try {
+              const loseContext = context.getExtension('WEBGL_lose_context')
+              if (loseContext && typeof loseContext.loseContext === 'function') {
+                loseContext.loseContext()
+              }
+            } catch (e) {
+              // Игнорируем ошибки при потере контекста
+            }
           }
         }
         gl.dispose()
       } catch (e) {
-        console.warn('Ошибка очистки WebGL контекста:', e)
+        // Игнорируем ошибки очистки
       }
     }
   }, [gl])
@@ -103,7 +108,7 @@ class ModelThumbnailErrorBoundary extends React.Component<
 
 
 let activeContexts = 0
-const MAX_ACTIVE_CONTEXTS = 8
+const MAX_ACTIVE_CONTEXTS = 6
 
 export default function ModelThumbnail({ modelPath, className }: ModelThumbnailProps) {
   const [isVisible, setIsVisible] = useState(false)
@@ -114,9 +119,13 @@ export default function ModelThumbnail({ modelPath, className }: ModelThumbnailP
     const container = containerRef.current
     if (!container) return
 
+    let isMounted = true
+
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
+          if (!isMounted) return
+          
           if (entry.isIntersecting) {
             setIsVisible(true)
             if (activeContexts < MAX_ACTIVE_CONTEXTS) {
@@ -131,7 +140,7 @@ export default function ModelThumbnail({ modelPath, className }: ModelThumbnailP
         })
       },
       {
-        rootMargin: '100px',
+        rootMargin: '50px',
         threshold: 0.01,
       }
     )
@@ -139,9 +148,11 @@ export default function ModelThumbnail({ modelPath, className }: ModelThumbnailP
     observer.observe(container)
 
     return () => {
+      isMounted = false
       observer.disconnect()
       if (canRender) {
         activeContexts = Math.max(0, activeContexts - 1)
+        setCanRender(false)
       }
     }
   }, [canRender])
@@ -164,16 +175,21 @@ export default function ModelThumbnail({ modelPath, className }: ModelThumbnailP
     <ModelThumbnailErrorBoundary fallback={fallback}>
       <div ref={containerRef} className={`relative w-full h-full bg-gray-100 ${className || ''}`}>
         <Canvas
+          key={`canvas-${modelPath}`}
           gl={{ 
             antialias: false, 
             alpha: true,
             powerPreference: 'low-power',
             preserveDrawingBuffer: false,
+            failIfMajorPerformanceCaveat: false,
           }}
           camera={{ position: [0, 0, 5], fov: 50 }}
           style={{ width: '100%', height: '100%' }}
           dpr={[1, 1.5]}
           frameloop="demand"
+          onCreated={({ gl }) => {
+            gl.setPixelRatio(Math.min(window.devicePixelRatio, 1.5))
+          }}
         >
           <ContextCleanup />
           <ambientLight intensity={0.6} />

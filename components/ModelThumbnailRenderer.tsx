@@ -83,9 +83,13 @@ export default function ModelThumbnailRenderer({ modelPath, onRenderComplete }: 
           alpha: true,
           powerPreference: 'low-power',
           preserveDrawingBuffer: true,
+          failIfMajorPerformanceCaveat: false,
         }}
         camera={{ position: [0, 0, 5], fov: 50 }}
         style={{ width: 256, height: 256 }}
+        onCreated={({ gl }) => {
+          gl.setPixelRatio(1)
+        }}
       >
         <ambientLight intensity={0.6} />
         <directionalLight position={[10, 10, 5]} intensity={0.8} />
