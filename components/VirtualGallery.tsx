@@ -20,24 +20,47 @@ const GALLERY_BOUNDS = {
 }
 
 class ModelErrorBoundary extends React.Component<
-  { children: React.ReactNode; fallback: React.ReactNode },
-  { hasError: boolean }
+  { children: React.ReactNode; fallback: React.ReactNode; modelPath?: string },
+  { hasError: boolean; retryCount: number }
 > {
-  constructor(props: { children: React.ReactNode; fallback: React.ReactNode }) {
+  private retryTimeout?: NodeJS.Timeout
+
+  constructor(props: { children: React.ReactNode; fallback: React.ReactNode; modelPath?: string }) {
     super(props)
-    this.state = { hasError: false }
+    this.state = { hasError: false, retryCount: 0 }
   }
 
-  static getDerivedStateFromError() {
-    return { hasError: true }
+  static getDerivedStateFromError(error: Error, prevState: { hasError: boolean; retryCount: number }) {
+    return { hasError: true, retryCount: prevState.retryCount }
   }
 
-  componentDidCatch(error: Error) {
-    console.warn('Ошибка загрузки модели:', error.message)
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.warn('Ошибка загрузки модели в VirtualGallery:', this.props.modelPath, error.message)
+    
+    if (this.state.retryCount < 1) {
+      if (this.retryTimeout) {
+        clearTimeout(this.retryTimeout)
+      }
+      this.retryTimeout = setTimeout(() => {
+        this.setState({ hasError: false, retryCount: this.state.retryCount + 1 })
+      }, 3000)
+    }
+  }
+
+  componentDidUpdate(prevProps: { children: React.ReactNode; fallback: React.ReactNode; modelPath?: string }) {
+    if (prevProps.modelPath !== this.props.modelPath && this.state.hasError) {
+      this.setState({ hasError: false, retryCount: 0 })
+    }
+  }
+
+  componentWillUnmount() {
+    if (this.retryTimeout) {
+      clearTimeout(this.retryTimeout)
+    }
   }
 
   render() {
-    if (this.state.hasError) {
+    if (this.state.hasError && this.state.retryCount >= 1) {
       return this.props.fallback
     }
     return this.props.children
@@ -66,6 +89,9 @@ function ExhibitInSpace({
   const groupRef = useRef<THREE.Group>(null)
   const modelGroupRef = useRef<THREE.Group>(null)
   const [distanceToCamera, setDistanceToCamera] = useState<number>(Infinity)
+  const [isModelActive, setIsModelActive] = useState<boolean>(!isMobile)
+  const modelActiveRef = useRef<boolean>(!isMobile)
+  const activationTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const { camera } = useThree()
 
   useFrame((state) => {
@@ -75,11 +101,45 @@ function ExhibitInSpace({
       const objectPosition = new THREE.Vector3(...position)
       const distance = camera.position.distanceTo(objectPosition)
       setDistanceToCamera(distance)
+
+      if (isMobile) {
+        const ACTIVATE_DISTANCE = 16
+        const DEACTIVATE_DISTANCE = 20
+        const shouldBeActive =
+          distance !== Infinity &&
+          (modelActiveRef.current
+            ? distance < DEACTIVATE_DISTANCE
+            : distance < ACTIVATE_DISTANCE)
+
+        if (shouldBeActive !== modelActiveRef.current) {
+          if (activationTimeoutRef.current) {
+            clearTimeout(activationTimeoutRef.current)
+          }
+          
+          if (shouldBeActive) {
+            activationTimeoutRef.current = setTimeout(() => {
+              modelActiveRef.current = true
+              setIsModelActive(true)
+            }, 300)
+          } else {
+            modelActiveRef.current = false
+            setIsModelActive(false)
+          }
+        }
+      }
     }
     if (modelGroupRef.current) {
       modelGroupRef.current.scale.setScalar(scale)
     }
   })
+
+  useEffect(() => {
+    return () => {
+      if (activationTimeoutRef.current) {
+        clearTimeout(activationTimeoutRef.current)
+      }
+    }
+  }, [])
   
   const isClose = distanceToCamera < 8 && distanceToCamera !== Infinity
 
@@ -106,17 +166,9 @@ function ExhibitInSpace({
       </mesh>
 
       <group ref={modelGroupRef} scale={scale}>
-        <Suspense
-          fallback={
-            <mesh>
-              <boxGeometry args={[1, 1, 1]} />
-              <meshStandardMaterial color="#9ca3af" />
-            </mesh>
-          }
-        >
-          {exhibit.has3DModel && exhibit.modelPath ? (
-            <ModelErrorBoundary
-              key={`${exhibit.id}-${exhibit.modelPath}`}
+        {exhibit.has3DModel && exhibit.modelPath ? (
+          (isModelActive || !isMobile) ? (
+            <Suspense
               fallback={
                 <mesh>
                   <boxGeometry args={[1, 1, 1]} />
@@ -124,15 +176,31 @@ function ExhibitInSpace({
                 </mesh>
               }
             >
-              <SafeModelWrapper modelPath={exhibit.modelPath} />
-            </ModelErrorBoundary>
+              <ModelErrorBoundary
+                key={`${exhibit.id}-${exhibit.modelPath}-${isModelActive}`}
+                modelPath={exhibit.modelPath}
+                fallback={
+                  <mesh>
+                    <boxGeometry args={[1, 1, 1]} />
+                    <meshStandardMaterial color="#9ca3af" />
+                  </mesh>
+                }
+              >
+                <SafeModelWrapper modelPath={exhibit.modelPath} />
+              </ModelErrorBoundary>
+            </Suspense>
           ) : (
             <mesh>
               <boxGeometry args={[1, 1, 1]} />
               <meshStandardMaterial color="#9ca3af" />
             </mesh>
-          )}
-        </Suspense>
+          )
+        ) : (
+          <mesh>
+            <boxGeometry args={[1, 1, 1]} />
+            <meshStandardMaterial color="#9ca3af" />
+          </mesh>
+        )}
       </group>
 
       {isClose && (
@@ -555,29 +623,36 @@ export default function VirtualGallery({ exhibits }: VirtualGalleryProps) {
 
       <Canvas
         gl={{
-          antialias: true,
+          antialias: !isMobile,
           alpha: false,
-          powerPreference: 'high-performance',
+          powerPreference: isMobile ? 'low-power' : 'high-performance',
           stencil: false,
           depth: true,
           preserveDrawingBuffer: false,
           toneMapping: THREE.ACESFilmicToneMapping,
           toneMappingExposure: 1.2,
-          precision: isMobile ? 'mediump' : 'highp',
+          precision: isMobile ? 'lowp' : 'highp',
+          failIfMajorPerformanceCaveat: false,
         }}
         shadows={!isMobile}
-        dpr={isMobile ? [1, Math.min(typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1, 2)] : [1, 2]}
-        performance={{ min: 0.5, max: 1 }}
+        dpr={isMobile ? [0.8, 1.2] : [1, 2]}
+        performance={{ min: isMobile ? 0.3 : 0.5, max: 1 }}
         style={{ width: '100%', height: '100%', touchAction: 'none' }}
         frameloop="always"
+        onCreated={({ gl }) => {
+          if (isMobile) {
+            gl.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5))
+            gl.shadowMap.enabled = false
+          }
+        }}
       >
-        <ambientLight intensity={0.35} color="#fff8e1" />
+        <ambientLight intensity={isMobile ? 0.5 : 0.35} color="#fff8e1" />
         <directionalLight
           position={[10, 10, 5]}
-          intensity={1.2}
+          intensity={isMobile ? 0.8 : 1.2}
           castShadow={!isMobile}
-          shadow-mapSize-width={isMobile ? 1024 : 2048}
-          shadow-mapSize-height={isMobile ? 1024 : 2048}
+          shadow-mapSize-width={isMobile ? 512 : 2048}
+          shadow-mapSize-height={isMobile ? 512 : 2048}
           shadow-camera-far={50}
           shadow-camera-left={-25}
           shadow-camera-right={25}
@@ -585,38 +660,37 @@ export default function VirtualGallery({ exhibits }: VirtualGalleryProps) {
           shadow-camera-bottom={-25}
           color="#fff8e1"
         />
-        <directionalLight position={[-10, 8, -5]} intensity={0.6} color="#fff8e1" />
-        <pointLight position={[0, 6.3, 0]} intensity={2.5} distance={42} decay={2} color="#fff8e1" />
+        {!isMobile && (
+          <directionalLight position={[-10, 8, -5]} intensity={0.6} color="#fff8e1" />
+        )}
         {isMobile ? (
           <>
-            <pointLight position={[-20, 5.5, -20]} intensity={1.2} distance={35} decay={2} color="#fff8e1" />
-            <pointLight position={[20, 5.5, 20]} intensity={1.2} distance={35} decay={2} color="#fff8e1" />
+            <pointLight position={[0, 6.3, 0]} intensity={1.5} distance={42} decay={2} color="#fff8e1" />
+            <pointLight position={[-20, 5.5, -20]} intensity={0.8} distance={35} decay={2} color="#fff8e1" />
+            <pointLight position={[20, 5.5, 20]} intensity={0.8} distance={35} decay={2} color="#fff8e1" />
           </>
         ) : (
           <>
+            <pointLight position={[0, 6.3, 0]} intensity={2.5} distance={42} decay={2} color="#fff8e1" />
             <pointLight position={[-20, 5.5, -20]} intensity={0.9} distance={32} decay={2} color="#fff8e1" />
             <pointLight position={[20, 5.5, -20]} intensity={0.9} distance={32} decay={2} color="#fff8e1" />
             <pointLight position={[-20, 5.5, 20]} intensity={0.9} distance={32} decay={2} color="#fff8e1" />
             <pointLight position={[20, 5.5, 20]} intensity={0.9} distance={32} decay={2} color="#fff8e1" />
-          </>
-        )}
-        <spotLight 
-          position={[0, 5, 0]} 
-          angle={Math.PI / 2.2} 
-          penumbra={0.7} 
-          intensity={2.0} 
-          distance={48} 
-          decay={2} 
-          color="#fff8e1"
-          castShadow={!isMobile}
-        />
-        {!isMobile && (
-          <>
+            <spotLight 
+              position={[0, 5, 0]} 
+              angle={Math.PI / 2.2} 
+              penumbra={0.7} 
+              intensity={2.0} 
+              distance={48} 
+              decay={2} 
+              color="#fff8e1"
+              castShadow={!isMobile}
+            />
             <pointLight position={[0, 4.5, -15]} intensity={0.5} distance={28} decay={2} color="#fff8e1" />
             <pointLight position={[0, 4.5, 15]} intensity={0.5} distance={28} decay={2} color="#fff8e1" />
           </>
         )}
-        <Environment preset="sunset" />
+        {!isMobile && <Environment preset="sunset" />}
 
         <PerspectiveCamera makeDefault position={[0, 2, 10]} fov={75} />
 
