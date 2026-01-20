@@ -31,8 +31,10 @@ export default function CatalogPage() {
         const exhibits: Exhibit[] = await exhibitsResponse.json()
         const content: PageContent = await contentResponse.json()
         
-        const cats = [...new Set(exhibits.map((e) => e.category))].sort()
-        const yrs = [...new Set(exhibits.map((e) => e.year).filter(Boolean))].sort()
+        const cats = Array.from(new Set(exhibits.map((e) => e.category))).sort()
+        const yrs = Array.from(
+          new Set(exhibits.map((e) => e.year).filter(Boolean) as string[])
+        ).sort()
         
         setAllExhibits(exhibits)
         setCategories(cats)
