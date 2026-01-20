@@ -4,11 +4,14 @@ import React, { Suspense, useMemo, useEffect, useRef, useState } from 'react'
 import { Canvas, useThree } from '@react-three/fiber'
 import { OrbitControls, PerspectiveCamera, Environment, useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
+import ModelThumbnailRenderer from './ModelThumbnailRenderer'
 
 interface ModelThumbnailProps {
   modelPath: string
   className?: string
 }
+
+const thumbnailCache = new Map<string, string>()
 
 function ContextCleanup() {
   const { gl } = useThree()
@@ -98,8 +101,13 @@ class ModelThumbnailErrorBoundary extends React.Component<
   }
 }
 
+
+let activeContexts = 0
+const MAX_ACTIVE_CONTEXTS = 8
+
 export default function ModelThumbnail({ modelPath, className }: ModelThumbnailProps) {
   const [isVisible, setIsVisible] = useState(false)
+  const [canRender, setCanRender] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -111,12 +119,19 @@ export default function ModelThumbnail({ modelPath, className }: ModelThumbnailP
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
             setIsVisible(true)
+            if (activeContexts < MAX_ACTIVE_CONTEXTS) {
+              setCanRender(true)
+              activeContexts++
+            }
             observer.disconnect()
+          } else if (!entry.isIntersecting && canRender) {
+            setCanRender(false)
+            activeContexts = Math.max(0, activeContexts - 1)
           }
         })
       },
       {
-        rootMargin: '50px',
+        rootMargin: '100px',
         threshold: 0.01,
       }
     )
@@ -125,8 +140,11 @@ export default function ModelThumbnail({ modelPath, className }: ModelThumbnailP
 
     return () => {
       observer.disconnect()
+      if (canRender) {
+        activeContexts = Math.max(0, activeContexts - 1)
+      }
     }
-  }, [])
+  }, [canRender])
 
   const fallback = (
     <div className={`relative w-full h-full bg-gray-100 flex items-center justify-center ${className || ''}`}>
@@ -134,7 +152,7 @@ export default function ModelThumbnail({ modelPath, className }: ModelThumbnailP
     </div>
   )
 
-  if (!isVisible) {
+  if (!isVisible || !canRender) {
     return (
       <div ref={containerRef} className={`relative w-full h-full bg-gray-100 flex items-center justify-center ${className || ''}`}>
         <div className="text-gray-400 text-xs">3D</div>

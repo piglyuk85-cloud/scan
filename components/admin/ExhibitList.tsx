@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Exhibit } from '@/types/exhibit'
 import Link from 'next/link'
 import ModelThumbnail from '@/components/ModelThumbnail'
@@ -28,6 +28,8 @@ export default function ExhibitList({
   const [sortField, setSortField] = useState<SortField>('createdAt')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   const [showPrivateOnly, setShowPrivateOnly] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
+  const ITEMS_PER_PAGE = 6
 
   // Фильтрация и сортировка
   const filteredAndSortedExhibits = useMemo(() => {
@@ -86,6 +88,15 @@ export default function ExhibitList({
 
     return filtered
   }, [exhibits, searchQuery, sortField, sortDirection, showPrivateOnly])
+
+  const totalPages = Math.ceil(filteredAndSortedExhibits.length / ITEMS_PER_PAGE)
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE
+  const endIndex = startIndex + ITEMS_PER_PAGE
+  const paginatedExhibits = filteredAndSortedExhibits.slice(startIndex, endIndex)
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchQuery, sortField, sortDirection, showPrivateOnly])
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -220,7 +231,7 @@ export default function ExhibitList({
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {filteredAndSortedExhibits.map((exhibit) => (
+              {paginatedExhibits.map((exhibit) => (
                 <tr
                   key={exhibit.id}
                   className="hover:bg-gray-50 transition-colors"
@@ -332,6 +343,61 @@ export default function ExhibitList({
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Пагинация */}
+      {totalPages > 1 && (
+        <div className="px-6 py-4 border-t border-gray-200 flex justify-between items-center">
+          <div className="text-sm text-gray-600">
+            Показано {startIndex + 1}-{Math.min(endIndex, filteredAndSortedExhibits.length)} из {filteredAndSortedExhibits.length}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+              className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+              if (
+                page === 1 ||
+                page === totalPages ||
+                (page >= currentPage - 1 && page <= currentPage + 1)
+              ) {
+                return (
+                  <button
+                    key={page}
+                    onClick={() => setCurrentPage(page)}
+                    className={`px-4 py-2 border rounded-lg transition-colors ${
+                      currentPage === page
+                        ? 'bg-primary-600 text-white border-primary-600'
+                        : 'border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    {page}
+                  </button>
+                )
+              } else if (page === currentPage - 2 || page === currentPage + 2) {
+                return <span key={page} className="px-2 text-gray-400">...</span>
+              }
+              return null
+            })}
+
+            <button
+              onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages}
+              className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          </div>
         </div>
       )}
     </div>
