@@ -59,9 +59,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Возвращаем путь относительно public
-    const publicPath =
+    // Базовый путь относительно public
+    const basePublicPath =
       type === 'model' ? `/models/${fileName}` : `/images/${fileName}`
+
+    // Для моделей добавляем query-параметр, чтобы обойти возможный кэш 404 в браузере
+    const publicPath =
+      type === 'model' ? `${basePublicPath}?v=${timestamp}` : basePublicPath
 
     console.log('Файл успешно загружен:', {
       originalName: file.name,
