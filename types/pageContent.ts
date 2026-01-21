@@ -79,6 +79,7 @@ export interface SiteSettings {
     home: string
     catalog: string
     virtualGallery: string
+    camera: string
     about: string
   }
   catalog: {

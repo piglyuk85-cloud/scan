@@ -99,3 +99,7 @@ docker-compose -f docker-compose.prod.yml up -d
 ## Лицензия
 
 Проект разработан для ВГУ имени П.М. Машерова.
+
+
+
+

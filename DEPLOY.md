@@ -257,3 +257,4 @@ docker-compose -f docker-compose.prod.yml down -v
 - Логи приложения: `docker-compose -f docker-compose.prod.yml logs`
 - Логи системы: `journalctl -xe`
 - Статус Docker: `sudo systemctl status docker`
+

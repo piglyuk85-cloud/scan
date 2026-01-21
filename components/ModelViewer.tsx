@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useRef, useMemo, useState, useEffect } from 'react'
+import React, { Suspense, useRef, useMemo, useState, useEffect, useCallback } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls, PerspectiveCamera, Environment, useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
@@ -16,21 +16,39 @@ function Model({
   modelPath: string
   onModelLoaded?: (center: [number, number, number], size: [number, number, number]) => void
 }) {
-  const [hasError, setHasError] = useState(false)
-  let scene: THREE.Group | null = null
+  const onModelLoadedRef = useRef(onModelLoaded)
+  const hasCalledRef = useRef(false)
+  const lastModelPathRef = useRef<string | null>(null)
   
-  try {
-    const gltf = useGLTF(modelPath) as { scene: THREE.Group }
-    scene = gltf.scene
-  } catch (error) {
-    console.warn('Ошибка загрузки модели:', modelPath, error)
-    setHasError(true)
-  }
+  // Обновляем ref при изменении функции
+  useEffect(() => {
+    onModelLoadedRef.current = onModelLoaded
+  }, [onModelLoaded])
+  
+  // Сбрасываем флаг при изменении modelPath
+  useEffect(() => {
+    if (lastModelPathRef.current !== modelPath) {
+      hasCalledRef.current = false
+      lastModelPathRef.current = modelPath
+    }
+  }, [modelPath])
+  
+  // Нормализуем путь - добавляем / если его нет
+  const normalizedPath = modelPath.startsWith('/') ? modelPath : `/${modelPath}`
+  
+  // useGLTF может выбросить ошибку, но она будет перехвачена ErrorBoundary
+  const { scene } = useGLTF(normalizedPath) as { scene: THREE.Group }
   
   const meshRef = useRef<THREE.Group>(null)
 
   const { processedScene, modelCenter, modelSize } = useMemo(() => {
-    if (hasError || !scene) return { processedScene: null, modelCenter: [0, 0, 0] as [number, number, number], modelSize: [0, 0, 0] as [number, number, number] }
+    if (!scene) {
+      return { 
+        processedScene: null, 
+        modelCenter: [0, 0, 0] as [number, number, number], 
+        modelSize: [0, 0, 0] as [number, number, number] 
+      }
+    }
 
     const clonedScene = scene.clone()
     
@@ -57,15 +75,17 @@ function Model({
       modelCenter: [scaledCenter.x, scaledCenter.y, scaledCenter.z] as [number, number, number],
       modelSize: [scaledSize.x, scaledSize.y, scaledSize.z] as [number, number, number]
     }
-  }, [scene])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelPath, scene])
 
   useEffect(() => {
-    if (processedScene && onModelLoaded) {
-      onModelLoaded(modelCenter, modelSize)
+    if (processedScene && onModelLoadedRef.current && !hasCalledRef.current) {
+      hasCalledRef.current = true
+      onModelLoadedRef.current(modelCenter, modelSize)
     }
-  }, [processedScene, modelCenter, modelSize, onModelLoaded])
+  }, [processedScene, modelCenter, modelSize])
 
-  if (hasError || !processedScene) {
+  if (!processedScene) {
     return (
       <mesh>
         <boxGeometry args={[1, 1, 1]} />
@@ -113,8 +133,48 @@ function AdaptiveCamera({ modelCenter, modelSize }: { modelCenter: [number, numb
 }
 
 
+// ErrorBoundary для обработки ошибок загрузки моделей
+class ModelErrorBoundary extends React.Component<
+  { children: React.ReactNode; fallback: React.ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: { children: React.ReactNode; fallback: React.ReactNode }) {
+    super(props)
+    this.state = { hasError: false }
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true }
+  }
+
+  componentDidCatch(error: Error) {
+    console.warn('Ошибка загрузки модели в ModelViewer:', error.message)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback
+    }
+    return this.props.children
+  }
+}
+
 function ModelViewer({ modelPath }: ModelViewerProps) {
   const [modelData, setModelData] = useState<{ center: [number, number, number], size: [number, number, number] } | null>(null)
+
+  const handleModelLoaded = useCallback((center: [number, number, number], size: [number, number, number]) => {
+    setModelData({ center, size })
+  }, [])
+
+  if (!modelPath || !modelPath.trim()) {
+    return (
+      <div className="relative w-full h-full flex items-center justify-center bg-gray-100 rounded-lg">
+        <div className="text-gray-500 text-center">
+          <p>3D модель не загружена</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="relative w-full h-full">
@@ -135,10 +195,19 @@ function ModelViewer({ modelPath }: ModelViewerProps) {
             </mesh>
           }
         >
-          <Model 
-            modelPath={modelPath} 
-            onModelLoaded={(center, size) => setModelData({ center, size })}
-          />
+          <ModelErrorBoundary
+            fallback={
+              <mesh>
+                <boxGeometry args={[1, 1, 1]} />
+                <meshStandardMaterial color="#9ca3af" />
+              </mesh>
+            }
+          >
+            <Model 
+              modelPath={modelPath} 
+              onModelLoaded={handleModelLoaded}
+            />
+          </ModelErrorBoundary>
         </Suspense>
         {modelData ? (
           <AdaptiveCamera modelCenter={modelData.center} modelSize={modelData.size} />

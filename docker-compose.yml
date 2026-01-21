@@ -9,12 +9,9 @@ services:
       # Монтируем папки для сохранения данных
       - ./public/models:/app/public/models
       - ./public/images:/app/public/images
-      - ./prisma:/app/prisma
-      - ./storage:/app/storage
-      - ./qr-codes:/app/qr-codes
+      - ./data:/app/data
     restart: unless-stopped
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=file:./prisma/dev.db
 
 

@@ -8,6 +8,16 @@ export default function Navbar() {
   const pathname = usePathname()
   const [isOpen, setIsOpen] = useState(false)
   const [siteName, setSiteName] = useState('ВГУ Галерея')
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false)
+
+  // Проверяем, является ли пользователь супер-администратором
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const auth = localStorage.getItem('admin_auth')
+      const role = localStorage.getItem('admin_role')
+      setIsSuperAdmin(auth === 'true' && role === 'super')
+    }
+  }, [])
 
   useEffect(() => {
     fetch('/api/page-content')
@@ -35,16 +45,23 @@ export default function Navbar() {
           setSiteName(data.settings.siteName)
         }
         if (data?.settings?.navigation) {
-          setNavLinks([
+          const links = [
             { href: '/', label: data.settings.navigation.home },
             { href: '/catalog', label: data.settings.navigation.catalog },
             { href: '/gallery', label: data.settings.navigation.virtualGallery },
             { href: '/about', label: data.settings.navigation.about },
-          ])
+          ]
+          
+          // Добавляем ссылку на камеру только для супер-администратора
+          if (isSuperAdmin) {
+            links.splice(3, 0, { href: '/camera', label: data.settings.navigation.camera || 'Камера' })
+          }
+          
+          setNavLinks(links)
         }
       })
       .catch(() => {})
-  }, [])
+  }, [isSuperAdmin])
 
   return (
     <nav className="bg-white shadow-md sticky top-0 z-50">
@@ -97,7 +114,7 @@ export default function Navbar() {
 
         {/* Mobile menu */}
         {isOpen && (
-          <div className="md:hidden py-4 border-t">
+          <div className="md:hidden py-4 border-t border-gray-200">
             {navLinks.map((link) => (
               <Link
                 key={link.href}

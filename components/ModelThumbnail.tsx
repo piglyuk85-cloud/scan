@@ -163,3 +163,7 @@ export default function ModelThumbnail({ modelPath, className }: ModelThumbnailP
     </ModelThumbnailErrorBoundary>
   )
 }
+
+
+
+

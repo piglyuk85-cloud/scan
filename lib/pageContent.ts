@@ -131,6 +131,7 @@ function getDefaultContent(): PageContent {
         home: 'Главная',
         catalog: 'Каталог',
         virtualGallery: 'Виртуальная галерея',
+        camera: 'Камера',
         about: 'О галерее',
       },
       catalog: {

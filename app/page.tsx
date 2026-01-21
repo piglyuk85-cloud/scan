@@ -19,7 +19,15 @@ export default async function Home() {
               {pageContent.home.hero.title}
             </h1>
             <p className="text-xl md:text-2xl mb-4 text-primary-100">
-              {pageContent.home.hero.subtitle}
+              {pageContent.home.hero.subtitle.split('П.М. Машерова').length > 1 ? (
+                <>
+                  {pageContent.home.hero.subtitle.split('П.М. Машерова')[0]}
+                  <span className="whitespace-nowrap">П.М. Машерова</span>
+                  {pageContent.home.hero.subtitle.split('П.М. Машерова')[1]}
+                </>
+              ) : (
+                pageContent.home.hero.subtitle
+              )}
             </p>
             <p className="text-lg md:text-xl mb-8 text-primary-200">
               {pageContent.home.hero.description}

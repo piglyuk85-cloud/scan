@@ -116,7 +116,7 @@ function ExhibitInSpace({
             e.stopPropagation()
             const current = touchStartRef.current
 
-            if (current) {
+            if (current && typeof e.clientX === 'number' && typeof e.clientY === 'number' && typeof performance !== 'undefined' && performance.now) {
               const dt = performance.now() - current.time
               const dx = e.clientX - current.x
               const dy = e.clientY - current.y
@@ -127,11 +127,15 @@ function ExhibitInSpace({
               const MAX_TAP_MOVE = 8
 
               if (dt <= MAX_TAP_DURATION && distance <= MAX_TAP_MOVE) {
-                if (document.pointerLockElement) {
+                if (typeof document !== 'undefined' && document.pointerLockElement) {
                   document.exitPointerLock()
                 }
                 setTimeout(() => {
-                  onClick()
+                  try {
+                    onClick()
+                  } catch (error) {
+                    console.error('Error in onClick handler:', error)
+                  }
                 }, 100)
               }
             }
@@ -140,19 +144,25 @@ function ExhibitInSpace({
         onPointerDown={(e) => {
           if (isMobile && e.pointerType === 'touch') {
             // запоминаем позицию и время касания для отличия тапа от свайпа
-            touchStartRef.current = {
-              x: e.clientX,
-              y: e.clientY,
-              time: performance.now(),
+            if (typeof e.clientX === 'number' && typeof e.clientY === 'number' && typeof performance !== 'undefined' && performance.now) {
+              touchStartRef.current = {
+                x: e.clientX,
+                y: e.clientY,
+                time: performance.now(),
+              }
             }
           } else {
             // десктоп / не touch — используем обычный клик как раньше
             e.stopPropagation()
-            if (document.pointerLockElement) {
+            if (typeof document !== 'undefined' && document.pointerLockElement) {
               document.exitPointerLock()
             }
             setTimeout(() => {
-              onClick()
+              try {
+                onClick()
+              } catch (error) {
+                console.error('Error in onClick handler:', error)
+              }
             }, 100)
           }
         }}
@@ -538,8 +548,11 @@ export default function VirtualGallery({ exhibits }: VirtualGalleryProps) {
   }, [])
 
   const exhibitData = useMemo(() => {
+    if (!exhibits || !Array.isArray(exhibits)) {
+      return []
+    }
     const visibleExhibits = exhibits.filter(
-      (ex) => ex.visibleInGallery !== false && (ex.isPublic !== false)
+      (ex) => ex && ex.visibleInGallery !== false && (ex.isPublic !== false)
     )
     const spacing = 6
     const rows = Math.ceil(Math.sqrt(visibleExhibits.length))
@@ -578,7 +591,15 @@ export default function VirtualGallery({ exhibits }: VirtualGalleryProps) {
 
   const handleExhibitClick = useCallback(
     (exhibitId: string) => {
-      router.push(`/exhibit/${exhibitId}`)
+      if (!exhibitId || typeof exhibitId !== 'string') {
+        console.warn('Invalid exhibit ID:', exhibitId)
+        return
+      }
+      try {
+        router.push(`/exhibit/${exhibitId}`)
+      } catch (error) {
+        console.error('Error navigating to exhibit:', error)
+      }
     },
     [router]
   )

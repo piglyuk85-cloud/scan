@@ -76,3 +76,4 @@ echo "Полезные команды:"
 echo "  Просмотр логов: docker-compose -f docker-compose.prod.yml logs -f"
 echo "  Остановка: docker-compose -f docker-compose.prod.yml down"
 echo "  Перезапуск: docker-compose -f docker-compose.prod.yml restart"
+

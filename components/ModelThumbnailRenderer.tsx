@@ -121,3 +121,7 @@ export default function ModelThumbnailRenderer({ modelPath, onRenderComplete }: 
     </div>
   )
 }
+
+
+
+
