@@ -389,7 +389,7 @@ export default function CameraPage() {
         <div className="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
           <h3 className="font-semibold text-blue-900 mb-2">Как использовать:</h3>
           <ol className="list-decimal list-inside space-y-2 text-sm text-blue-800">
-            <li>Нажмите кнопку "Запустить сканер"</li>
+            <li>Нажмите кнопку &quot;Запустить сканер&quot;</li>
             <li>Разрешите доступ к камере, если браузер попросит</li>
             <li>Наведите камеру на QR-код экспоната</li>
             <li>Переход на страницу экспоната произойдет автоматически</li>
