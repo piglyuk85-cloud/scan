@@ -225,23 +225,6 @@ export default async function ExhibitPage({ params }: PageProps) {
             </div>
           )}
 
-          {/* Технические характеристики */}
-          {exhibit.technicalSpecs && (
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-2xl font-bold mb-4 text-gray-800">
-                {pageContent.settings.exhibit.technicalSpecs}
-              </h2>
-              <dl className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {Object.entries(exhibit.technicalSpecs).map(([key, value]) => (
-                  <div key={key} className="border-b border-gray-200 pb-2">
-                    <dt className="text-sm font-medium text-gray-500">{key}</dt>
-                    <dd className="text-lg text-gray-800 mt-1">{value}</dd>
-                  </div>
-                ))}
-              </dl>
-            </div>
-          )}
-
           {/* Интересные факты */}
           {exhibit.interestingFacts && exhibit.interestingFacts.length > 0 && (
             <div className="bg-white rounded-lg shadow-md p-6">
