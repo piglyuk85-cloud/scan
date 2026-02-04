@@ -3,18 +3,39 @@ import { writeFile, open } from 'fs/promises'
 import path from 'path'
 import { existsSync, mkdirSync } from 'fs'
 
+// Увеличиваем лимит размера тела запроса для загрузки больших 3D моделей (до 100MB)
+export const maxDuration = 300 // 5 минут для больших файлов
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+
 export async function POST(request: NextRequest) {
   try {
+    // Логируем информацию о запросе для диагностики
+    const contentLength = request.headers.get('content-length')
+    const contentType = request.headers.get('content-type')
+    console.log('Upload request:', {
+      contentLength,
+      contentType,
+      hasBody: !!request.body,
+    })
+
     const formData = await request.formData()
     const file = formData.get('file') as File
     const type = formData.get('type') as string // 'model' или 'image'
 
     if (!file) {
+      console.error('File not found in formData')
       return NextResponse.json(
         { error: 'Файл не загружен' },
         { status: 400 }
       )
     }
+
+    console.log('File received:', {
+      name: file.name,
+      size: file.size,
+      type: file.type,
+    })
 
     // Определяем папку назначения
     const uploadDir =

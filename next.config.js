@@ -10,7 +10,7 @@ const nextConfig = {
   // Увеличиваем лимит размера загружаемых файлов для 3D моделей
   experimental: {
     serverActions: {
-      bodySizeLimit: '10mb',
+      bodySizeLimit: '100mb', // Увеличено для больших 3D моделей
     },
   },
 }

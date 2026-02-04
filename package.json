@@ -9,6 +9,7 @@
     "lint": "next lint",
     "generate-qr": "node scripts/generate-qr.js",
     "migrate:data": "tsx scripts/migrate-to-db.ts",
+    "fix:migration": "tsx scripts/fix-migration-duplicates.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
