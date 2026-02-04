@@ -584,14 +584,18 @@ export default function VirtualGallery({ exhibits }: VirtualGalleryProps) {
       window.removeEventListener('resize', checkMobile)
       // Очистка при размонтировании
       setIsMobile(false)
-      // Очистка Canvas WebGL контекста
+      // Очистка Canvas WebGL контекста (если расширение поддерживается)
       if (canvasRef.current) {
-        const gl = canvasRef.current.getContext('webgl') || canvasRef.current.getContext('webgl2')
-        if (gl) {
-          const loseContext = (gl as any).getExtension?.('WEBGL_lose_context')
-          if (loseContext) {
-            loseContext.loseContext()
+        try {
+          const gl = canvasRef.current.getContext('webgl') || canvasRef.current.getContext('webgl2')
+          if (gl) {
+            const loseContext = (gl as any).getExtension?.('WEBGL_lose_context')
+            if (loseContext && loseContext.loseContext) {
+              loseContext.loseContext()
+            }
           }
+        } catch (error) {
+          // Расширение не поддерживается - это нормально, основная очистка через dispose()
         }
         canvasRef.current = null
       }

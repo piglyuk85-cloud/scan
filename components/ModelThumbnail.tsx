@@ -153,11 +153,15 @@ export default function ModelThumbnail({ modelPath, className }: ModelThumbnailP
     return () => {
       observer.disconnect()
       setIsVisible(false)
-      // Очистка WebGL контекста
+      // Очистка WebGL контекста (если расширение поддерживается)
       if (webglContextRef.current) {
-        const loseContext = (webglContextRef.current as any).getExtension?.('WEBGL_lose_context')
-        if (loseContext) {
-          loseContext.loseContext()
+        try {
+          const loseContext = (webglContextRef.current as any).getExtension?.('WEBGL_lose_context')
+          if (loseContext && loseContext.loseContext) {
+            loseContext.loseContext()
+          }
+        } catch (error) {
+          // Расширение не поддерживается - это нормально, основная очистка через dispose()
         }
         webglContextRef.current = null
       }

@@ -129,11 +129,15 @@ export default function ModelThumbnailRenderer({ modelPath, onRenderComplete }: 
 
   useEffect(() => {
     return () => {
-      // Очистка WebGL контекста при размонтировании
+      // Очистка WebGL контекста при размонтировании (если расширение поддерживается)
       if (webglContextRef.current) {
-        const loseContext = (webglContextRef.current as any).getExtension?.('WEBGL_lose_context')
-        if (loseContext) {
-          loseContext.loseContext()
+        try {
+          const loseContext = (webglContextRef.current as any).getExtension?.('WEBGL_lose_context')
+          if (loseContext && loseContext.loseContext) {
+            loseContext.loseContext()
+          }
+        } catch (error) {
+          // Расширение не поддерживается - это нормально, основная очистка через dispose()
         }
         webglContextRef.current = null
       }
