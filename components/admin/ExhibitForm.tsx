@@ -45,6 +45,17 @@ export default function ExhibitForm({ exhibit, onSubmit, onCancel, userRole }: E
   const [uploadProgress, setUploadProgress] = useState('')
   const modelFileRef = useRef<HTMLInputElement>(null)
   const imageFileRef = useRef<HTMLInputElement>(null)
+  const progressTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Очистка таймеров при размонтировании
+  useEffect(() => {
+    return () => {
+      if (progressTimeoutRef.current) {
+        clearTimeout(progressTimeoutRef.current)
+        progressTimeoutRef.current = null
+      }
+    }
+  }, [])
 
   useEffect(() => {
     if (exhibit) {
@@ -128,7 +139,10 @@ export default function ExhibitForm({ exhibit, onSubmit, onCancel, userRole }: E
         has3DModel: true,
       }))
       setUploadProgress('3D модель успешно загружена')
-      setTimeout(() => setUploadProgress(''), 3000)
+      if (progressTimeoutRef.current) {
+        clearTimeout(progressTimeoutRef.current)
+      }
+      progressTimeoutRef.current = setTimeout(() => setUploadProgress(''), 3000)
     } else {
       setUploadProgress('')
     }
@@ -147,7 +161,10 @@ export default function ExhibitForm({ exhibit, onSubmit, onCancel, userRole }: E
         previewImage: prev.previewImage || path,
       }))
       setUploadProgress('Изображение успешно загружено')
-      setTimeout(() => setUploadProgress(''), 3000)
+      if (progressTimeoutRef.current) {
+        clearTimeout(progressTimeoutRef.current)
+      }
+      progressTimeoutRef.current = setTimeout(() => setUploadProgress(''), 3000)
     } else {
       setUploadProgress('')
     }

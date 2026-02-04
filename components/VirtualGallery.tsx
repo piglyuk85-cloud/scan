@@ -56,6 +56,7 @@ class ModelErrorBoundary extends React.Component<
   componentWillUnmount() {
     if (this.retryTimeout) {
       clearTimeout(this.retryTimeout)
+      this.retryTimeout = undefined
     }
   }
 
@@ -92,6 +93,7 @@ function ExhibitInSpace({
   const { camera } = useThree()
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null)
   const isMountedRef = useRef(true)
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   useFrame((state) => {
     if (!isMountedRef.current) return
@@ -114,6 +116,11 @@ function ExhibitInSpace({
     return () => {
       isMountedRef.current = false
       setDistanceToCamera(Infinity)
+      // Очищаем все таймеры
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+        timeoutRef.current = null
+      }
     }
   }, [])
   
@@ -142,11 +149,16 @@ function ExhibitInSpace({
                 if (typeof document !== 'undefined' && document.pointerLockElement) {
                   document.exitPointerLock()
                 }
-                setTimeout(() => {
-                  try {
-                    onClick()
-                  } catch (error) {
-                    console.error('Error in onClick handler:', error)
+                if (timeoutRef.current) {
+                  clearTimeout(timeoutRef.current)
+                }
+                timeoutRef.current = setTimeout(() => {
+                  if (isMountedRef.current) {
+                    try {
+                      onClick()
+                    } catch (error) {
+                      console.error('Error in onClick handler:', error)
+                    }
                   }
                 }, 100)
               }
@@ -522,8 +534,18 @@ function GalleryCeiling({ isMobile }: { isMobile: boolean }) {
 
 function CameraBounds({ isOrbitMode, isMobile }: { isOrbitMode: boolean; isMobile: boolean }) {
   const { camera } = useThree()
+  const isMountedRef = useRef(true)
+
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [])
 
   useFrame(() => {
+    if (!isMountedRef.current) return
+    
     if (!isOrbitMode || !isMobile) {
       camera.position.x = Math.max(
         GALLERY_BOUNDS.minX + 1,
@@ -546,6 +568,7 @@ export default function VirtualGallery({ exhibits }: VirtualGalleryProps) {
   const router = useRouter()
   const [isMobile, setIsMobile] = useState(false)
   const canvasContainerRef = useRef<HTMLDivElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
 
   useEffect(() => {
     const checkMobile = () => {
@@ -561,6 +584,17 @@ export default function VirtualGallery({ exhibits }: VirtualGalleryProps) {
       window.removeEventListener('resize', checkMobile)
       // Очистка при размонтировании
       setIsMobile(false)
+      // Очистка Canvas WebGL контекста
+      if (canvasRef.current) {
+        const gl = canvasRef.current.getContext('webgl') || canvasRef.current.getContext('webgl2')
+        if (gl) {
+          const loseContext = (gl as any).getExtension?.('WEBGL_lose_context')
+          if (loseContext) {
+            loseContext.loseContext()
+          }
+        }
+        canvasRef.current = null
+      }
     }
   }, [])
 
@@ -674,6 +708,7 @@ export default function VirtualGallery({ exhibits }: VirtualGalleryProps) {
         style={{ width: '100%', height: '100%', touchAction: 'none' }}
         frameloop="always"
         onCreated={({ gl }) => {
+          canvasRef.current = gl.domElement
           if (isMobile) {
             gl.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5))
             gl.shadowMap.enabled = false

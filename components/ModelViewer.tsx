@@ -212,6 +212,7 @@ class ModelErrorBoundary extends React.Component<
 function ModelViewer({ modelPath }: ModelViewerProps) {
   const [modelData, setModelData] = useState<{ center: [number, number, number], size: [number, number, number] } | null>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
+  const webglContextRef = useRef<WebGLRenderingContext | WebGL2RenderingContext | null>(null)
 
   const handleModelLoaded = useCallback((center: [number, number, number], size: [number, number, number]) => {
     setModelData({ center, size })
@@ -222,6 +223,14 @@ function ModelViewer({ modelPath }: ModelViewerProps) {
     return () => {
       // Очищаем состояние при размонтировании
       setModelData(null)
+      // Очистка WebGL контекста
+      if (webglContextRef.current) {
+        const loseContext = (webglContextRef.current as any).getExtension?.('WEBGL_lose_context')
+        if (loseContext) {
+          loseContext.loseContext()
+        }
+        webglContextRef.current = null
+      }
     }
   }, [])
 
@@ -241,6 +250,8 @@ function ModelViewer({ modelPath }: ModelViewerProps) {
         gl={{ antialias: true, alpha: true }}
         style={{ width: '100%', height: '100%' }}
         onCreated={({ gl }) => {
+          // Сохраняем ссылку на WebGL контекст для очистки
+          webglContextRef.current = gl.getContext() as WebGLRenderingContext | WebGL2RenderingContext
           // Настройка для лучшей производительности
           gl.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
         }}

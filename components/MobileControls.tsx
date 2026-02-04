@@ -232,6 +232,14 @@ export default function MobileControls({ onMove, onLook }: MobileControlsProps) 
     const canvas = document.querySelector('canvas')
     if (!canvas) return
 
+    // Очищаем animationFrame при размонтировании
+    const cleanup = () => {
+      if (animationFrameRef.current !== null) {
+        cancelAnimationFrame(animationFrameRef.current)
+        animationFrameRef.current = null
+      }
+    }
+
     const handleCanvasTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 0) return
       
@@ -302,6 +310,7 @@ export default function MobileControls({ onMove, onLook }: MobileControlsProps) 
     canvas.addEventListener('touchcancel', handleCanvasTouchCancel, { passive: true })
 
     return () => {
+      cleanup()
       canvas.removeEventListener('touchstart', handleCanvasTouchStart)
       canvas.removeEventListener('touchmove', handleCanvasTouchMove)
       canvas.removeEventListener('touchend', handleCanvasTouchEnd)

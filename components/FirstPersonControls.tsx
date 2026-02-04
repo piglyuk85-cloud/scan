@@ -260,7 +260,18 @@ export default function FirstPersonControls({ onMobileMove, onMobileLook, bounds
     }
   }, [camera, gl])
 
+  const isMountedRef = useRef(true)
+
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [])
+
   useFrame((state, delta) => {
+    if (!isMountedRef.current) return
+
     const forward = Number(moveForward.current) - Number(moveBackward.current)
     const right = Number(moveRight.current) - Number(moveLeft.current)
     
