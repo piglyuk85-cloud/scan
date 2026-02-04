@@ -1,5 +1,5 @@
--- CreateTable: Supervisor
-CREATE TABLE "Supervisor" (
+-- CreateTable: Supervisor (if not exists)
+CREATE TABLE IF NOT EXISTS "Supervisor" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "name" TEXT NOT NULL,
     "position" TEXT,
@@ -10,31 +10,33 @@ CREATE TABLE "Supervisor" (
 );
 
 -- Migrate data: Extract unique supervisors from Exhibit
--- Create a temporary table to generate UUIDs
+-- Group by name to handle duplicates - take first non-null values for other fields
 CREATE TEMPORARY TABLE temp_supervisors AS
-SELECT DISTINCT
+SELECT 
     "supervisor" as name,
-    "supervisorPosition" as position,
-    "supervisorRank" as rank,
-    "supervisorDepartment" as department
+    MAX("supervisorPosition") as position,
+    MAX("supervisorRank") as rank,
+    MAX("supervisorDepartment") as department
 FROM "Exhibit"
-WHERE "supervisor" IS NOT NULL AND "supervisor" != '';
+WHERE "supervisor" IS NOT NULL AND "supervisor" != ''
+GROUP BY "supervisor";
 
--- Insert supervisors with generated UUIDs
-INSERT INTO "Supervisor" ("id", "name", "position", "rank", "department", "createdAt", "updatedAt")
+-- Insert supervisors with generated UUIDs (ignore duplicates)
+INSERT OR IGNORE INTO "Supervisor" ("id", "name", "position", "rank", "department", "createdAt", "updatedAt")
 SELECT 
     lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))), 2) || '-' || substr('89ab', abs(random()) % 4 + 1, 1) || lower(hex(randomblob(2))) || '-' || lower(hex(randomblob(6))) as id,
     name,
-    position,
-    rank,
-    department,
+    NULLIF(position, '') as position,
+    NULLIF(rank, '') as rank,
+    NULLIF(department, '') as department,
     datetime('now') as "createdAt",
     datetime('now') as "updatedAt"
-FROM temp_supervisors;
+FROM temp_supervisors
+WHERE name NOT IN (SELECT name FROM "Supervisor");
 
--- Create unique index on name
-CREATE UNIQUE INDEX "Supervisor_name_key" ON "Supervisor"("name");
-CREATE INDEX "Supervisor_name_idx" ON "Supervisor"("name");
+-- Create unique index on name (if not exists)
+CREATE UNIQUE INDEX IF NOT EXISTS "Supervisor_name_key" ON "Supervisor"("name");
+CREATE INDEX IF NOT EXISTS "Supervisor_name_idx" ON "Supervisor"("name");
 
 -- RedefineTables: Add supervisorId to Exhibit
 PRAGMA defer_foreign_keys=ON;
