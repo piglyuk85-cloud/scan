@@ -91,8 +91,11 @@ function ExhibitInSpace({
   const [distanceToCamera, setDistanceToCamera] = useState<number>(Infinity)
   const { camera } = useThree()
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null)
+  const isMountedRef = useRef(true)
 
   useFrame((state) => {
+    if (!isMountedRef.current) return
+    
     if (groupRef.current) {
       groupRef.current.rotation.y = rotationY + Math.sin(state.clock.elapsedTime * 0.5) * 0.1
       
@@ -104,6 +107,15 @@ function ExhibitInSpace({
       modelGroupRef.current.scale.setScalar(scale)
     }
   })
+
+  // Очистка при размонтировании
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+      setDistanceToCamera(Infinity)
+    }
+  }, [])
   
   const isClose = distanceToCamera < 8 && distanceToCamera !== Infinity
 
@@ -533,6 +545,7 @@ function CameraBounds({ isOrbitMode, isMobile }: { isOrbitMode: boolean; isMobil
 export default function VirtualGallery({ exhibits }: VirtualGalleryProps) {
   const router = useRouter()
   const [isMobile, setIsMobile] = useState(false)
+  const canvasContainerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const checkMobile = () => {
@@ -544,7 +557,11 @@ export default function VirtualGallery({ exhibits }: VirtualGalleryProps) {
 
     checkMobile()
     window.addEventListener('resize', checkMobile)
-    return () => window.removeEventListener('resize', checkMobile)
+    return () => {
+      window.removeEventListener('resize', checkMobile)
+      // Очистка при размонтировании
+      setIsMobile(false)
+    }
   }, [])
 
   const exhibitData = useMemo(() => {
@@ -623,7 +640,10 @@ export default function VirtualGallery({ exhibits }: VirtualGalleryProps) {
   const controlsMode = 'firstperson' as const
 
   return (
-    <div className={`relative w-full ${isMobile ? 'h-[calc(100vh-6rem)]' : 'h-screen'} bg-gradient-to-b from-stone-50 via-amber-50/20 to-stone-50`}>
+    <div 
+      ref={canvasContainerRef}
+      className={`relative w-full ${isMobile ? 'h-[calc(100vh-6rem)]' : 'h-screen'} bg-gradient-to-b from-stone-50 via-amber-50/20 to-stone-50`}
+    >
       {!isMobile && (
         <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-none">
           <div className="w-2 h-2 bg-white rounded-full opacity-80"></div>

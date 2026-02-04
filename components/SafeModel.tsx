@@ -1,8 +1,40 @@
 'use client'
 
-import React, { Suspense, useRef, useMemo } from 'react'
+import React, { Suspense, useRef, useMemo, useEffect } from 'react'
 import { useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
+
+// Функция для очистки ресурсов Three.js из сцены
+function disposeScene(scene: THREE.Object3D) {
+  scene.traverse((child) => {
+    if (child instanceof THREE.Mesh) {
+      if (child.geometry) {
+        child.geometry.dispose()
+      }
+      if (child.material) {
+        if (Array.isArray(child.material)) {
+          child.material.forEach((mat) => {
+            if (mat.map) mat.map.dispose()
+            if (mat.normalMap) mat.normalMap.dispose()
+            if (mat.roughnessMap) mat.roughnessMap.dispose()
+            if (mat.metalnessMap) mat.metalnessMap.dispose()
+            if (mat.emissiveMap) mat.emissiveMap.dispose()
+            if (mat.aoMap) mat.aoMap.dispose()
+            mat.dispose()
+          })
+        } else {
+          if (child.material.map) child.material.map.dispose()
+          if (child.material.normalMap) child.material.normalMap.dispose()
+          if (child.material.roughnessMap) child.material.roughnessMap.dispose()
+          if (child.material.metalnessMap) child.material.metalnessMap.dispose()
+          if (child.material.emissiveMap) child.material.emissiveMap.dispose()
+          if (child.material.aoMap) child.material.aoMap.dispose()
+          child.material.dispose()
+        }
+      }
+    }
+  })
+}
 
 interface SafeModelProps {
   modelPath: string
@@ -10,14 +42,22 @@ interface SafeModelProps {
 
 function ModelLoader({ modelPath }: { modelPath: string }) {
   const groupRef = useRef<THREE.Group>(null)
+  const processedSceneRef = useRef<THREE.Group | null>(null)
 
   const normalizedPath = modelPath.startsWith('/') ? modelPath : `/${modelPath}`
   const { scene } = useGLTF(normalizedPath) as { scene: THREE.Group }
 
   const processedScene = useMemo(() => {
+    // Освобождаем предыдущую сцену перед созданием новой
+    if (processedSceneRef.current) {
+      disposeScene(processedSceneRef.current)
+      processedSceneRef.current = null
+    }
+
     if (!scene) return null
 
     const clonedScene = scene.clone()
+    processedSceneRef.current = clonedScene
 
     const box = new THREE.Box3().setFromObject(clonedScene)
     const size = box.getSize(new THREE.Vector3())
@@ -38,6 +78,16 @@ function ModelLoader({ modelPath }: { modelPath: string }) {
 
     return clonedScene
   }, [scene])
+
+  // Очистка ресурсов при размонтировании
+  useEffect(() => {
+    return () => {
+      if (processedSceneRef.current) {
+        disposeScene(processedSceneRef.current)
+        processedSceneRef.current = null
+      }
+    }
+  }, [])
 
   if (!processedScene) {
     return (

@@ -122,7 +122,7 @@ export default async function ExhibitPage({ params }: PageProps) {
             <div className="bg-white rounded-lg shadow-md p-6">
               <h2 className="text-2xl font-bold mb-4 text-gray-800">{pageContent.settings.exhibit.model3D}</h2>
               <div className="aspect-square bg-gray-100 rounded-lg overflow-hidden">
-                <ModelViewer modelPath={exhibit.modelPath} />
+                <ModelViewer key={exhibit.id} modelPath={exhibit.modelPath} />
               </div>
             </div>
           )}
