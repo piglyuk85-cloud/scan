@@ -16,11 +16,15 @@ export interface Exhibit {
   studentName?: string
   studentCourse?: string
   studentGroup?: string
-  // 7. Научный руководитель (ФИО, должность, звание, кафедра)
-  supervisor?: string
-  supervisorPosition?: string
-  supervisorRank?: string
-  supervisorDepartment?: string
+  // 7. Научный руководитель (связь через relation)
+  supervisorId?: string
+  supervisor?: {
+    id: string
+    name: string
+    position?: string
+    rank?: string
+    department?: string
+  }
   // 8. Размеры (ВхШхГ) или диаметр
   dimensions?: string
   // 9. Текущее местонахождение (экспозиция, запасник)

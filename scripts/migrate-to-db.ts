@@ -31,6 +31,39 @@ async function migrateExhibits() {
 
     for (const exhibit of exhibits) {
       try {
+        // Обрабатываем Supervisor: находим или создаем
+        let supervisorId: string | null = null
+        if (exhibit.supervisor) {
+          // Если supervisor - строка (старый формат)
+          const supervisorName = typeof exhibit.supervisor === 'string' 
+            ? exhibit.supervisor 
+            : exhibit.supervisor.name
+
+          if (supervisorName) {
+            // Ищем существующего руководителя по имени
+            let supervisor = await prisma.supervisor.findUnique({
+              where: { name: supervisorName },
+            })
+
+            // Если не найден, создаем нового
+            if (!supervisor) {
+              const supervisorData = typeof exhibit.supervisor === 'string'
+                ? { name: supervisorName }
+                : {
+                    name: exhibit.supervisor.name,
+                    position: exhibit.supervisor.position || null,
+                    rank: exhibit.supervisor.rank || null,
+                    department: exhibit.supervisor.department || null,
+                  }
+
+              supervisor = await prisma.supervisor.create({
+                data: supervisorData,
+              })
+            }
+            supervisorId = supervisor.id
+          }
+        }
+
         await prisma.exhibit.upsert({
           where: { id: exhibit.id },
           update: {
@@ -42,7 +75,7 @@ async function migrateExhibits() {
             studentName: exhibit.studentName || null,
             studentCourse: exhibit.studentCourse || null,
             studentGroup: exhibit.studentGroup || null,
-            supervisor: exhibit.supervisor || null,
+            supervisorId: supervisorId,
             modelPath: exhibit.modelPath || null,
             has3DModel: exhibit.has3DModel || false,
             previewImage: exhibit.previewImage || null,
@@ -62,7 +95,7 @@ async function migrateExhibits() {
             studentName: exhibit.studentName || null,
             studentCourse: exhibit.studentCourse || null,
             studentGroup: exhibit.studentGroup || null,
-            supervisor: exhibit.supervisor || null,
+            supervisorId: supervisorId,
             modelPath: exhibit.modelPath || null,
             has3DModel: exhibit.has3DModel || false,
             previewImage: exhibit.previewImage || null,

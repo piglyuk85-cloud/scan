@@ -137,8 +137,7 @@ export default async function ExhibitPage({ params }: PageProps) {
 
           {/* Информация об авторе */}
           {(exhibit.studentName || exhibit.studentCourse || exhibit.studentGroup || 
-            exhibit.supervisor || exhibit.supervisorPosition || exhibit.supervisorRank || 
-            exhibit.supervisorDepartment) && (
+            exhibit.supervisor) && (
             <div className="bg-white rounded-lg shadow-md p-6">
               <h2 className="text-2xl font-bold mb-4 text-gray-800">
                 {pageContent.settings.exhibit.aboutAuthor}
@@ -166,10 +165,10 @@ export default async function ExhibitPage({ params }: PageProps) {
                   <div>
                     <dt className="text-sm font-medium text-gray-500">{pageContent.settings.exhibit.supervisor}</dt>
                     <dd className="text-lg text-gray-800 mt-1">
-                      {exhibit.supervisor}
-                      {exhibit.supervisorPosition && `, ${exhibit.supervisorPosition}`}
-                      {exhibit.supervisorRank && `, ${exhibit.supervisorRank}`}
-                      {exhibit.supervisorDepartment && `, ${exhibit.supervisorDepartment}`}
+                      {exhibit.supervisor.name}
+                      {exhibit.supervisor.position && `, ${exhibit.supervisor.position}`}
+                      {exhibit.supervisor.rank && `, ${exhibit.supervisor.rank}`}
+                      {exhibit.supervisor.department && `, ${exhibit.supervisor.department}`}
                     </dd>
                   </div>
                 )}

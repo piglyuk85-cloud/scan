@@ -12,10 +12,14 @@ function formatExhibit(exhibit: any): Exhibit {
     studentName: exhibit.studentName || undefined,
     studentCourse: exhibit.studentCourse || undefined,
     studentGroup: exhibit.studentGroup || undefined,
-    supervisor: exhibit.supervisor || undefined,
-    supervisorPosition: exhibit.supervisorPosition || undefined,
-    supervisorRank: exhibit.supervisorRank || undefined,
-    supervisorDepartment: exhibit.supervisorDepartment || undefined,
+    supervisorId: exhibit.supervisorId || undefined,
+    supervisor: exhibit.supervisor ? {
+      id: exhibit.supervisor.id,
+      name: exhibit.supervisor.name,
+      position: exhibit.supervisor.position || undefined,
+      rank: exhibit.supervisor.rank || undefined,
+      department: exhibit.supervisor.department || undefined,
+    } : undefined,
     dimensions: exhibit.dimensions || undefined,
     currentLocation: exhibit.currentLocation || undefined,
     isPublic: exhibit.isPublic ?? undefined,
@@ -43,6 +47,7 @@ export async function getExhibits(includePrivate: boolean = false): Promise<Exhi
   
   const exhibits = await prisma.exhibit.findMany({
     where: whereClause,
+    include: { supervisor: true },
     orderBy: { createdAt: 'desc' },
   })
 
@@ -52,6 +57,7 @@ export async function getExhibits(includePrivate: boolean = false): Promise<Exhi
 export async function getExhibitById(id: string, includePrivate: boolean = false): Promise<Exhibit | undefined> {
   const exhibit = await prisma.exhibit.findUnique({
     where: { id },
+    include: { supervisor: true },
   })
 
   if (!exhibit) return undefined
@@ -66,6 +72,7 @@ export async function getExhibitById(id: string, includePrivate: boolean = false
 export async function getExhibitsByCategory(category: string): Promise<Exhibit[]> {
   const exhibits = await prisma.exhibit.findMany({
     where: { category },
+    include: { supervisor: true },
     orderBy: { createdAt: 'desc' },
   })
 
@@ -75,6 +82,7 @@ export async function getExhibitsByCategory(category: string): Promise<Exhibit[]
 export async function searchExhibits(query: string): Promise<Exhibit[]> {
   const lowerQuery = query.toLowerCase()
   const exhibits = await prisma.exhibit.findMany({
+    include: { supervisor: true },
     orderBy: { createdAt: 'desc' },
   })
 
@@ -84,7 +92,8 @@ export async function searchExhibits(query: string): Promise<Exhibit[]> {
         exhibit.title.toLowerCase().includes(lowerQuery) ||
         exhibit.description.toLowerCase().includes(lowerQuery) ||
         exhibit.category.toLowerCase().includes(lowerQuery) ||
-        (exhibit.studentName && exhibit.studentName.toLowerCase().includes(lowerQuery))
+        (exhibit.studentName && exhibit.studentName.toLowerCase().includes(lowerQuery)) ||
+        (exhibit.supervisor && exhibit.supervisor.name.toLowerCase().includes(lowerQuery))
     )
     .map(formatExhibit)
 }

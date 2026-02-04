@@ -20,10 +20,13 @@ export default function ExhibitForm({ exhibit, onSubmit, onCancel, userRole }: E
     studentName: '',
     studentCourse: '',
     studentGroup: '',
-    supervisor: '',
-    supervisorPosition: '',
-    supervisorRank: '',
-    supervisorDepartment: '',
+    supervisor: {
+      id: '',
+      name: '',
+      position: '',
+      rank: '',
+      department: '',
+    },
     dimensions: '',
     currentLocation: '',
     isPublic: true,
@@ -48,6 +51,13 @@ export default function ExhibitForm({ exhibit, onSubmit, onCancel, userRole }: E
       setFormData({
         ...exhibit,
         year: exhibit.creationDate || exhibit.year || '',
+        supervisor: exhibit.supervisor || {
+          id: '',
+          name: '',
+          position: '',
+          rank: '',
+          department: '',
+        },
       })
     }
   }, [exhibit])
@@ -60,6 +70,16 @@ export default function ExhibitForm({ exhibit, onSubmit, onCancel, userRole }: E
 
     if (type === 'checkbox') {
       setFormData((prev) => ({ ...prev, [name]: checked }))
+    } else if (name.startsWith('supervisor.')) {
+      // Обработка полей supervisor
+      const field = name.split('.')[1] as 'name' | 'position' | 'rank' | 'department'
+      setFormData((prev) => ({
+        ...prev,
+        supervisor: {
+          ...(prev.supervisor || { id: '', name: '', position: '', rank: '', department: '' }),
+          [field]: value,
+        },
+      }))
     } else {
       setFormData((prev) => ({ ...prev, [name]: value }))
     }
@@ -330,8 +350,8 @@ export default function ExhibitForm({ exhibit, onSubmit, onCancel, userRole }: E
               </label>
               <input
                 type="text"
-                name="supervisor"
-                value={formData.supervisor || ''}
+                name="supervisor.name"
+                value={formData.supervisor?.name || ''}
                 onChange={handleChange}
                 placeholder="Петров Петр Петрович"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
@@ -343,8 +363,8 @@ export default function ExhibitForm({ exhibit, onSubmit, onCancel, userRole }: E
               </label>
               <input
                 type="text"
-                name="supervisorPosition"
-                value={formData.supervisorPosition || ''}
+                name="supervisor.position"
+                value={formData.supervisor?.position || ''}
                 onChange={handleChange}
                 placeholder="Доцент"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
@@ -356,8 +376,8 @@ export default function ExhibitForm({ exhibit, onSubmit, onCancel, userRole }: E
               </label>
               <input
                 type="text"
-                name="supervisorRank"
-                value={formData.supervisorRank || ''}
+                name="supervisor.rank"
+                value={formData.supervisor?.rank || ''}
                 onChange={handleChange}
                 placeholder="Кандидат наук"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
@@ -369,8 +389,8 @@ export default function ExhibitForm({ exhibit, onSubmit, onCancel, userRole }: E
               </label>
               <input
                 type="text"
-                name="supervisorDepartment"
-                value={formData.supervisorDepartment || ''}
+                name="supervisor.department"
+                value={formData.supervisor?.department || ''}
                 onChange={handleChange}
                 placeholder="Кафедра изобразительного искусства"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"

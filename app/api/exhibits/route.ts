@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
     
     const exhibits = await prisma.exhibit.findMany({
       where: whereClause,
+      include: { supervisor: true },
       orderBy: { createdAt: 'desc' },
     })
 
@@ -28,10 +29,14 @@ export async function GET(request: NextRequest) {
       studentName: exhibit.studentName || undefined,
       studentCourse: exhibit.studentCourse || undefined,
       studentGroup: exhibit.studentGroup || undefined,
-      supervisor: exhibit.supervisor || undefined,
-      supervisorPosition: exhibit.supervisorPosition || undefined,
-      supervisorRank: exhibit.supervisorRank || undefined,
-      supervisorDepartment: exhibit.supervisorDepartment || undefined,
+      supervisorId: exhibit.supervisorId || undefined,
+      supervisor: exhibit.supervisor ? {
+        id: exhibit.supervisor.id,
+        name: exhibit.supervisor.name,
+        position: exhibit.supervisor.position || undefined,
+        rank: exhibit.supervisor.rank || undefined,
+        department: exhibit.supervisor.department || undefined,
+      } : undefined,
       dimensions: exhibit.dimensions || undefined,
       currentLocation: exhibit.currentLocation || undefined,
       isPublic: exhibit.isPublic ?? undefined,
@@ -93,6 +98,28 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Обрабатываем Supervisor: находим или создаем
+    let supervisorId: string | null = null
+    if (exhibit.supervisor?.name) {
+      // Ищем существующего руководителя по имени
+      let supervisor = await prisma.supervisor.findUnique({
+        where: { name: exhibit.supervisor.name },
+      })
+
+      // Если не найден, создаем нового
+      if (!supervisor) {
+        supervisor = await prisma.supervisor.create({
+          data: {
+            name: exhibit.supervisor.name,
+            position: exhibit.supervisor.position || null,
+            rank: exhibit.supervisor.rank || null,
+            department: exhibit.supervisor.department || null,
+          },
+        })
+      }
+      supervisorId = supervisor.id
+    }
+
     const created = await prisma.exhibit.create({
       data: {
         id: exhibitId,
@@ -105,10 +132,7 @@ export async function POST(request: NextRequest) {
         studentName: exhibit.studentName || null,
         studentCourse: exhibit.studentCourse || null,
         studentGroup: exhibit.studentGroup || null,
-        supervisor: exhibit.supervisor || null,
-        supervisorPosition: exhibit.supervisorPosition || null,
-        supervisorRank: exhibit.supervisorRank || null,
-        supervisorDepartment: exhibit.supervisorDepartment || null,
+        supervisorId: supervisorId,
         dimensions: exhibit.dimensions || null,
         currentLocation: exhibit.currentLocation || null,
         isPublic: exhibit.isPublic ?? true,
@@ -127,35 +151,45 @@ export async function POST(request: NextRequest) {
       },
     })
 
+    // Загружаем созданный экспонат с supervisor
+    const createdWithSupervisor = await prisma.exhibit.findUnique({
+      where: { id: created.id },
+      include: { supervisor: true },
+    })
+
     const formattedExhibit: Exhibit = {
-      id: created.id,
+      id: createdWithSupervisor!.id,
       // Новые поля согласно структуре
-      inventoryNumber: created.inventoryNumber || undefined,
-      title: created.title,
-      description: created.description,
-      fullDescription: created.fullDescription || undefined,
-      creationDate: created.creationDate || undefined,
-      studentName: created.studentName || undefined,
-      studentCourse: created.studentCourse || undefined,
-      studentGroup: created.studentGroup || undefined,
-      supervisor: created.supervisor || undefined,
-      supervisorPosition: created.supervisorPosition || undefined,
-      supervisorRank: created.supervisorRank || undefined,
-      supervisorDepartment: created.supervisorDepartment || undefined,
-      dimensions: created.dimensions || undefined,
-      currentLocation: created.currentLocation || undefined,
-      isPublic: created.isPublic ?? undefined,
+      inventoryNumber: createdWithSupervisor!.inventoryNumber || undefined,
+      title: createdWithSupervisor!.title,
+      description: createdWithSupervisor!.description,
+      fullDescription: createdWithSupervisor!.fullDescription || undefined,
+      creationDate: createdWithSupervisor!.creationDate || undefined,
+      studentName: createdWithSupervisor!.studentName || undefined,
+      studentCourse: createdWithSupervisor!.studentCourse || undefined,
+      studentGroup: createdWithSupervisor!.studentGroup || undefined,
+      supervisorId: createdWithSupervisor!.supervisorId || undefined,
+      supervisor: createdWithSupervisor!.supervisor ? {
+        id: createdWithSupervisor!.supervisor.id,
+        name: createdWithSupervisor!.supervisor.name,
+        position: createdWithSupervisor!.supervisor.position || undefined,
+        rank: createdWithSupervisor!.supervisor.rank || undefined,
+        department: createdWithSupervisor!.supervisor.department || undefined,
+      } : undefined,
+      dimensions: createdWithSupervisor!.dimensions || undefined,
+      currentLocation: createdWithSupervisor!.currentLocation || undefined,
+      isPublic: createdWithSupervisor!.isPublic ?? undefined,
       // Дополнительные поля для совместимости
-      category: created.category,
-      year: created.year || created.creationDate || undefined,
-      modelPath: created.modelPath || undefined,
-      has3DModel: created.has3DModel,
-      previewImage: created.previewImage || undefined,
-      images: JSON.parse(created.images || '[]') as string[],
-      creationInfo: created.creationInfo || undefined,
-      technicalSpecs: JSON.parse(created.technicalSpecs || '{}') as Record<string, string>,
-      interestingFacts: JSON.parse(created.interestingFacts || '[]') as string[],
-      relatedExhibits: JSON.parse(created.relatedExhibits || '[]') as string[],
+      category: createdWithSupervisor!.category,
+      year: createdWithSupervisor!.year || createdWithSupervisor!.creationDate || undefined,
+      modelPath: createdWithSupervisor!.modelPath || undefined,
+      has3DModel: createdWithSupervisor!.has3DModel,
+      previewImage: createdWithSupervisor!.previewImage || undefined,
+      images: JSON.parse(createdWithSupervisor!.images || '[]') as string[],
+      creationInfo: createdWithSupervisor!.creationInfo || undefined,
+      technicalSpecs: JSON.parse(createdWithSupervisor!.technicalSpecs || '{}') as Record<string, string>,
+      interestingFacts: JSON.parse(createdWithSupervisor!.interestingFacts || '[]') as string[],
+      relatedExhibits: JSON.parse(createdWithSupervisor!.relatedExhibits || '[]') as string[],
     }
 
     return NextResponse.json({ success: true, exhibit: formattedExhibit }, { status: 201 })

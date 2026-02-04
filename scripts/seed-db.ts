@@ -11,6 +11,31 @@ async function seed() {
     return
   }
 
+  // Создаем научных руководителей
+  const supervisor1 = await prisma.supervisor.upsert({
+    where: { name: 'Петр Петров' },
+    update: {},
+    create: {
+      name: 'Петр Петров',
+      position: 'Доцент',
+      rank: 'Кандидат наук',
+      department: 'Кафедра изобразительного искусства',
+    },
+  })
+  console.log(`✓ Создан/найден научный руководитель: ${supervisor1.name}`)
+
+  const supervisor2 = await prisma.supervisor.upsert({
+    where: { name: 'Анна Смирнова' },
+    update: {},
+    create: {
+      name: 'Анна Смирнова',
+      position: 'Профессор',
+      rank: 'Доктор наук',
+      department: 'Кафедра изобразительного искусства',
+    },
+  })
+  console.log(`✓ Создан/найден научный руководитель: ${supervisor2.name}`)
+
   const exhibits = [
     {
       id: 'exhibit-1',
@@ -22,7 +47,7 @@ async function seed() {
       studentName: 'Иван Иванов',
       studentCourse: '3 курс',
       studentGroup: 'Группа 1',
-      supervisor: 'Петр Петров',
+      supervisorId: supervisor1.id,
       modelPath: '/models/model1-1764125921075.glb',
       has3DModel: true,
       previewImage: '/images/Снимок-1766367704588.PNG',
@@ -42,7 +67,7 @@ async function seed() {
       studentName: 'Мария Сидорова',
       studentCourse: '4 курс',
       studentGroup: 'Группа 2',
-      supervisor: 'Анна Смирнова',
+      supervisorId: supervisor2.id,
       modelPath: '/models/artifact3_03d3553c-ff27-49c5-a69c-d85541bc4f81-1766358821019.glb',
       has3DModel: true,
       previewImage: '/images/Снимок-1766367924459.PNG',
