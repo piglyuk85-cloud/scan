@@ -1,11 +1,25 @@
 'use client'
 
-import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react'
+import React, { useState, useEffect, useRef, useCallback, Suspense, createContext, useContext } from 'react'
 import { Canvas, useThree, useFrame } from '@react-three/fiber'
-import { OrbitControls, Html, Environment } from '@react-three/drei'
+import { OrbitControls, Html, Environment, TransformControls, Grid } from '@react-three/drei'
+import { EffectComposer, Outline, Selection, Select } from '@react-three/postprocessing'
 import * as THREE from 'three'
 import { Exhibit } from '@/types/exhibit'
 import SafeModelWrapper from '@/components/SafeModel'
+
+// Контекст для авто-фокуса камеры и настроек редактора
+type FocusTarget = [number, number, number] | null
+const EditorGalleryContext = createContext<{
+  focusTarget: FocusTarget
+  setFocusTarget: (v: FocusTarget) => void
+  gridSnap: boolean
+} | null>(null)
+
+function useEditorGallery() {
+  const ctx = useContext(EditorGalleryContext)
+  return ctx
+}
 
 // Константы границ галереи
 const GALLERY_BOUNDS = {
@@ -13,7 +27,7 @@ const GALLERY_BOUNDS = {
   maxX: 24,
   minZ: -24,
   maxZ: 24,
-  minY: 0.5,
+  minY: 0,
   maxY: 7,
 }
 
@@ -26,6 +40,10 @@ function EditorCameraControls({
   isDragging: boolean
 }) {
   const { camera, gl } = useThree()
+  const editorCtx = useEditorGallery()
+  const focusTarget = editorCtx?.focusTarget ?? null
+  const setFocusTarget = editorCtx?.setFocusTarget ?? (() => {})
+
   const moveForward = useRef(false)
   const moveBackward = useRef(false)
   const moveLeft = useRef(false)
@@ -34,8 +52,8 @@ function EditorCameraControls({
   const moveDown = useRef(false)
   const moveVector = useRef(new THREE.Vector3())
   const euler = useRef(new THREE.Euler(0, 0, 0, 'YXZ'))
-  const isRightMouseDown = useRef(false) // Правая кнопка мыши для вращения
-  const isMiddleMouseDown = useRef(false) // Средняя кнопка для панорамирования
+  const isRightMouseDown = useRef(false)
+  const isMiddleMouseDown = useRef(false)
   const lastMouseX = useRef(0)
   const lastMouseY = useRef(0)
 
@@ -231,6 +249,22 @@ function EditorCameraControls({
   }, [camera, gl, bounds, isDragging])
 
   useFrame((state, delta) => {
+    // Кинематографичный фокус: плавное сближение камеры за ~0.5–0.8 с (exponential damping)
+    if (focusTarget && setFocusTarget) {
+      const targetVec = new THREE.Vector3(focusTarget[0], focusTarget[1], focusTarget[2])
+      const desiredOffset = new THREE.Vector3(0, 2.5, 10)
+      const desiredPosition = targetVec.clone().add(desiredOffset)
+      const DAMP_SPEED = 6
+      const smoothFactor = 1 - Math.exp(-DAMP_SPEED * delta)
+      camera.position.lerp(desiredPosition, smoothFactor)
+      camera.lookAt(targetVec)
+      if (camera.position.distanceTo(desiredPosition) < 0.02) {
+        camera.position.copy(desiredPosition)
+        setFocusTarget(null)
+      }
+      return
+    }
+
     const forward = Number(moveForward.current) - Number(moveBackward.current)
     const right = Number(moveRight.current) - Number(moveLeft.current)
     const up = Number(moveUp.current) - Number(moveDown.current)
@@ -280,7 +314,39 @@ function EditorCameraControls({
   return null
 }
 
-// ErrorBoundary для обработки ошибок загрузки моделей
+// Визуальная сетка на полу (Y=0), плавное появление при включённой привязке к сетке
+function EditorGridHelper() {
+  const ctx = useEditorGallery()
+  const gridSnap = ctx?.gridSnap ?? false
+  const gridRef = useRef<THREE.Mesh>(null)
+  const opacityRef = useRef(0)
+
+  useFrame((_, delta) => {
+    if (!gridRef.current) return
+    const target = gridSnap ? 1 : 0
+    opacityRef.current += (target - opacityRef.current) * Math.min(1, delta * 4)
+    const mat = gridRef.current.material as THREE.Material & { opacity?: number }
+    if (mat && 'opacity' in mat) mat.opacity = opacityRef.current
+    gridRef.current.visible = opacityRef.current > 0.01
+  })
+
+  return (
+    <Grid
+      ref={gridRef}
+      position={[0, 0, 0]}
+      rotation={[-Math.PI / 2, 0, 0]}
+      args={[100, 100]}
+      sectionSize={1}
+      sectionColor="#3b82f6"
+      cellColor="#3b82f6"
+      cellThickness={0.5}
+      sectionThickness={0.8}
+      fadeDistance={30}
+      fadeStrength={1}
+      infiniteGrid={false}
+    />
+  )
+}
 class ModelErrorBoundary extends React.Component<
   { children: React.ReactNode; fallback: React.ReactNode },
   { hasError: boolean }
@@ -312,265 +378,204 @@ interface GalleryEditorProps {
   scale: number
   rotationY: number
   isSelected: boolean
+  hasSelection: boolean
+  transformMode: 'translate' | 'rotate' | 'scale'
+  lockHeight: boolean
+  gridSnap: boolean
   onPositionChange: (position: [number, number, number]) => void
   onScaleChange: (scale: number) => void
   onRotationChange: (rotation: number) => void
   onSelect: () => void
-  onDragStart: () => void
-  onDragEnd: () => void
-  lockHeight: boolean
-  isRotating: boolean
+  onControlsDragStart: () => void
+  onControlsDragEnd: () => void
+  visible?: boolean
+  locked?: boolean
 }
 
-// Компонент экспоната в редакторе - идентичен виртуальной галерее
+// Компонент экспоната в редакторе с TransformControls (ref-based обновления, setState только на mouseUp)
 function EditableExhibit({
   exhibit,
   position,
   scale,
   rotationY,
   isSelected,
+  hasSelection,
+  transformMode,
+  lockHeight,
+  gridSnap,
   onPositionChange,
   onScaleChange,
   onRotationChange,
   onSelect,
-  onDragStart,
-  onDragEnd,
-  lockHeight,
-  isRotating,
+  onControlsDragStart,
+  onControlsDragEnd,
+  visible = true,
+  locked = false,
 }: GalleryEditorProps) {
   const groupRef = useRef<THREE.Group>(null)
-  const [isDragging, setIsDragging] = useState(false)
+  const controlsRef = useRef<THREE.TransformControls>(null)
   const [isHovered, setIsHovered] = useState(false)
-  const dragStartRef = useRef<{
-    mouse: THREE.Vector2
-    position: [number, number, number]
-    rotation: number
-    plane: THREE.Plane
-  } | null>(null)
-  const { raycaster, camera, gl } = useThree()
-  
-  // Помечаем объекты экспоната для идентификации
-  useEffect(() => {
-    if (groupRef.current) {
-      groupRef.current.traverse((child) => {
-        child.userData.isExhibit = true
-      })
-    }
-  }, [])
+  const [lockFlash, setLockFlash] = useState(false)
 
-  // Обработка перетаскивания
-  const handlePointerDown = useCallback(
+  const handleClickSelect = useCallback(
     (e: any) => {
       e.stopPropagation()
-      setIsDragging(true)
-      setIsHovered(true)
+      if (locked) {
+        setLockFlash(true)
+        setTimeout(() => setLockFlash(false), 450)
+        return
+      }
       onSelect()
-      onDragStart() // Уведомляем родителя о начале перетаскивания
-      
-      // Получаем координаты мыши в нормализованных координатах (-1 до 1)
-      const mouse = new THREE.Vector2()
-      const rect = gl.domElement.getBoundingClientRect()
-      const clientX = e.nativeEvent?.clientX ?? e.clientX ?? 0
-      const clientY = e.nativeEvent?.clientY ?? e.clientY ?? 0
-      mouse.x = (clientX - rect.left) / rect.width * 2 - 1
-      mouse.y = -(clientY - rect.top) / rect.height * 2 + 1
-      
-      // Создаем плоскость для перемещения на уровне экспоната
-      const planeNormal = new THREE.Vector3(0, 1, 0) // Горизонтальная плоскость
-      const planePoint = new THREE.Vector3(position[0], position[1], position[2])
-      const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(planeNormal, planePoint)
-      
-      dragStartRef.current = {
-        mouse: mouse.clone(),
-        position: [...position] as [number, number, number],
-        rotation: rotationY,
-        plane,
-      }
-      // Безопасный вызов setPointerCapture с обработкой ошибок
-      try {
-        const target = e.target as HTMLElement
-        if (target && target.setPointerCapture && e.pointerId !== undefined) {
-          target.setPointerCapture(e.pointerId)
-        }
-      } catch (error) {
-        // Игнорируем ошибку, если setPointerCapture не поддерживается или недоступен
-        console.debug('setPointerCapture не доступен:', error)
-      }
     },
-    [position, rotationY, onSelect, onDragStart, gl]
+    [onSelect, locked]
   )
 
-  const handlePointerMove = useCallback(
-    (e: any) => {
-      // Продолжаем перетаскивание даже если пользователь нажимает другие кнопки мыши
-      if (isDragging && dragStartRef.current && groupRef.current) {
-        // Проверяем, зажат ли Shift для режима вращения
-        const shiftPressed = e.shiftKey || (e.nativeEvent?.shiftKey ?? false)
-        const shouldRotate = isRotating || shiftPressed
-        
-        // Получаем текущие координаты мыши
-        const rect = gl.domElement.getBoundingClientRect()
-        const currentMouse = new THREE.Vector2()
-        const clientX = e.nativeEvent?.clientX ?? e.clientX ?? 0
-        const clientY = e.nativeEvent?.clientY ?? e.clientY ?? 0
-        currentMouse.x = (clientX - rect.left) / rect.width * 2 - 1
-        currentMouse.y = -(clientY - rect.top) / rect.height * 2 + 1
-        
-        if (shouldRotate) {
-          // Режим вращения: вычисляем угол поворота на основе движения мыши
-          const mouseDelta = new THREE.Vector2().subVectors(
-            currentMouse,
-            dragStartRef.current.mouse
-          )
-          
-          // Вычисляем угол поворота на основе горизонтального движения мыши
-          const rotationDelta = mouseDelta.x * Math.PI * 2 // Полный оборот при движении мыши по всей ширине
-          const newRotation = dragStartRef.current.rotation + rotationDelta
-          
-          // Нормализуем угол в диапазон [0, 2π]
-          const normalizedRotation = ((newRotation % (Math.PI * 2)) + (Math.PI * 2)) % (Math.PI * 2)
-          onRotationChange(normalizedRotation)
-        } else {
-          // Режим перемещения
-          let newPos: [number, number, number]
-          
-          if (lockHeight) {
-            // Режим изменения высоты: вертикальное движение мыши = изменение Y
-            const mouseDelta = new THREE.Vector2().subVectors(
-              currentMouse,
-              dragStartRef.current.mouse
-            )
-            
-            const moveX = mouseDelta.x * 5 // Масштабируем для плавности
-            const moveY = mouseDelta.y * 5
-            
-            newPos = [
-              dragStartRef.current.position[0] + moveX, // Горизонтальное движение = X
-              dragStartRef.current.position[1] + moveY, // Вертикальное движение = Y (высота)
-              dragStartRef.current.position[2], // Z фиксирован
-            ]
-          } else {
-            // Обычный режим: используем raycasting на плоскости для точного перемещения
-            raycaster.setFromCamera(currentMouse, camera)
-            
-            const intersection = new THREE.Vector3()
-            if (raycaster.ray.intersectPlane(dragStartRef.current.plane, intersection)) {
-              // Получаем начальную точку пересечения
-              raycaster.setFromCamera(dragStartRef.current.mouse, camera)
-              const startIntersection = new THREE.Vector3()
-              if (raycaster.ray.intersectPlane(dragStartRef.current.plane, startIntersection)) {
-                const delta = new THREE.Vector3().subVectors(intersection, startIntersection)
-                
-                newPos = [
-                  dragStartRef.current.position[0] + delta.x, // Горизонтальное движение = X
-                  dragStartRef.current.position[1], // Высота фиксирована
-                  dragStartRef.current.position[2] + delta.z, // Вертикальное движение мыши = Z (вперед/назад)
-                ]
-              } else {
-                // Fallback: используем простой расчет через дельту мыши
-                const mouseDelta = new THREE.Vector2().subVectors(
-                  currentMouse,
-                  dragStartRef.current.mouse
-                )
-                const moveX = mouseDelta.x * 5
-                const moveZ = -mouseDelta.y * 5
-                
-                newPos = [
-                  dragStartRef.current.position[0] + moveX,
-                  dragStartRef.current.position[1],
-                  dragStartRef.current.position[2] + moveZ,
-                ]
-              }
-            } else {
-              // Fallback: используем простой расчет через дельту мыши
-              const mouseDelta = new THREE.Vector2().subVectors(
-                currentMouse,
-                dragStartRef.current.mouse
-              )
-              const moveX = mouseDelta.x * 5
-              const moveZ = -mouseDelta.y * 5
-              
-              newPos = [
-                dragStartRef.current.position[0] + moveX,
-                dragStartRef.current.position[1],
-                dragStartRef.current.position[2] + moveZ,
-              ]
-            }
-          }
-          
-          onPositionChange(newPos)
-        }
-      }
-    },
-    [isDragging, onPositionChange, onRotationChange, lockHeight, isRotating, camera, raycaster, gl]
-  )
+  // При выборе экспоната синхронизируем ref с текущими props (чтобы TransformControls начал с правильной позиции)
+  useEffect(() => {
+    if (groupRef.current && isSelected) {
+      groupRef.current.position.set(position[0], position[1], position[2])
+      groupRef.current.rotation.set(0, rotationY, 0)
+      groupRef.current.scale.setScalar(scale)
+    }
+  }, [isSelected, position[0], position[1], position[2], rotationY, scale])
 
-  const handlePointerUp = useCallback(
-    (e: any) => {
-      // Останавливаем перетаскивание только если отпущена левая кнопка мыши
-      // Проверяем button или используем pointerId для определения кнопки
-      const button = e.button
-      const pointerId = e.pointerId
-      const isLeftButton = button === undefined || button === 0
-      
-      if (isLeftButton) {
-        setIsDragging(false)
-        dragStartRef.current = null
-        onDragEnd() // Уведомляем родителя об окончании перетаскивания
-        // Безопасный вызов releasePointerCapture с обработкой ошибок
-        try {
-          const target = e.target as HTMLElement
-          if (target && target.releasePointerCapture && pointerId !== undefined) {
-            target.releasePointerCapture(pointerId)
-          }
-        } catch (error) {
-          // Игнорируем ошибку, если releasePointerCapture не поддерживается
-          console.debug('releasePointerCapture не доступен:', error)
+  // Гизмо поверх геометрии: depthTest: false для приоритета отрисовки стрелок над моделями.
+  // При внедрении режима «от первого лица» рассмотреть отдельный слой рендеринга для гизмо,
+  // чтобы стрелки не рисовались сквозь руки/тело камеры (например, слой 1 для гизмо и отсечение по слою).
+  useEffect(() => {
+    const ctrl = controlsRef.current as unknown as THREE.Object3D & { gizmo?: THREE.Object3D; plane?: THREE.Object3D }
+    if (!ctrl || !isSelected || locked) return
+    const setDepthTest = (obj: THREE.Object3D) => {
+      obj.traverse((child) => {
+        const mesh = child as THREE.Mesh
+        if (mesh.material) {
+          const arr = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+          arr.forEach((m) => {
+            if (m && 'depthTest' in m) (m as THREE.Material).depthTest = false
+          })
         }
-      }
-    },
-    [onDragEnd]
-  )
+      })
+    }
+    setDepthTest(ctrl)
+  }, [isSelected, locked])
 
+  const flushTransformToState = useCallback(() => {
+    if (!groupRef.current) return
+    const obj = groupRef.current
+    let y = obj.position.y
+    if (lockHeight) y = GALLERY_BOUNDS.minY
+    const clamped: [number, number, number] = [
+      Math.max(GALLERY_BOUNDS.minX, Math.min(GALLERY_BOUNDS.maxX, obj.position.x)),
+      Math.max(GALLERY_BOUNDS.minY, Math.min(GALLERY_BOUNDS.maxY, y)),
+      Math.max(GALLERY_BOUNDS.minZ, Math.min(GALLERY_BOUNDS.maxZ, obj.position.z)),
+    ]
+    onPositionChange(clamped)
+    onRotationChange(obj.rotation.y)
+    const s = Math.max(0.1, Math.min(3, obj.scale.x))
+    onScaleChange(s)
+  }, [lockHeight, onPositionChange, onRotationChange, onScaleChange])
+
+  const handleControlsChange = useCallback(() => {
+    if (!groupRef.current || !controlsRef.current) return
+    if (lockHeight && transformMode === 'translate') {
+      groupRef.current.position.y = GALLERY_BOUNDS.minY
+    }
+  }, [lockHeight, transformMode])
+
+  const handleControlsMouseDown = useCallback(() => {
+    onControlsDragStart()
+  }, [onControlsDragStart])
+
+  const handleControlsMouseUp = useCallback(() => {
+    flushTransformToState()
+    onControlsDragEnd()
+  }, [flushTransformToState, onControlsDragEnd])
 
   return (
-    <group
-      ref={groupRef}
-      position={position}
-      rotation={[0, rotationY, 0]}
-    >
-      {/* Невидимая область для взаимодействия - можно кликать на весь экспонат */}
-      {/* Масштабируем область взаимодействия вместе с моделью */}
+    <>
+      {isSelected && !locked ? (
+        <TransformControls
+          ref={controlsRef}
+          object={groupRef as React.RefObject<THREE.Group>}
+          mode={transformMode}
+          showX={true}
+          showY={!lockHeight}
+          showZ={true}
+          size={0.75}
+          translationSnap={gridSnap ? 0.5 : undefined}
+          rotationSnap={gridSnap ? Math.PI / 12 : undefined}
+          onMouseDown={() => {
+            handleControlsMouseDown()
+          }}
+          onChange={handleControlsChange}
+          onMouseUp={() => {
+            handleControlsMouseUp()
+          }}
+        >
+          <Select enabled>
+            <group
+              ref={groupRef}
+              position={[position[0], position[1], position[2]]}
+              rotation={[0, rotationY, 0]}
+              scale={[scale, scale, scale]}
+              visible={visible}
+            >
+              <ExhibitContent exhibit={exhibit} scale={scale} isHovered={isHovered} onSelect={handleClickSelect} isSelected={isSelected} hasSelection={hasSelection} lockFlash={lockFlash} />
+              <SelectedIndicator scale={scale} />
+            </group>
+          </Select>
+        </TransformControls>
+      ) : (
+        <group
+          ref={groupRef}
+          position={position}
+          rotation={[0, rotationY, 0]}
+          scale={scale}
+          visible={visible}
+          onClick={handleClickSelect}
+          onPointerOver={(e) => { e.stopPropagation(); setIsHovered(true) }}
+          onPointerOut={(e) => { e.stopPropagation(); setIsHovered(false) }}
+        >
+          <ExhibitContent exhibit={exhibit} scale={scale} isHovered={isHovered} onSelect={handleClickSelect} isSelected={isSelected} hasSelection={hasSelection} lockFlash={lockFlash} />
+          {isSelected && <SelectedIndicator scale={scale} />}
+        </group>
+      )}
+    </>
+  )
+}
+
+// Модель и хитбокс экспоната (opacity для эффекта фокуса, emissive для контура выбранного, lockFlash — красная вспышка при клике на заблокированный)
+function ExhibitContent({
+  exhibit,
+  scale,
+  isHovered,
+  onSelect,
+  isSelected,
+  hasSelection,
+  lockFlash = false,
+}: {
+  exhibit: Exhibit
+  scale: number
+  isHovered: boolean
+  onSelect: () => void
+  isSelected: boolean
+  hasSelection: boolean
+  lockFlash?: boolean
+}) {
+  const opacity = hasSelection && !isSelected ? 0.35 : 1
+  const emissiveIntensity = lockFlash ? 0.95 : (isSelected ? 0.45 : 0)
+  const emissiveColor = lockFlash ? '#ef4444' : '#3b82f6'
+  return (
+    <>
       <mesh
         position={[0, 1 * scale, 0]}
         scale={scale}
-        onPointerOver={(e) => {
-          e.stopPropagation()
-          setIsHovered(true)
-        }}
-        onPointerOut={(e) => {
-          e.stopPropagation()
-          setIsHovered(false)
-        }}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={(e) => {
-          // Обрабатываем отмену pointer events (например, при нажатии других кнопок)
-          // Не останавливаем перетаскивание, если это не левая кнопка
-          const button = (e as any).button
-          if (button === 0 || button === undefined) {
-            setIsDragging(false)
-            dragStartRef.current = null
-            onDragEnd()
-          }
-        }}
+        onPointerDown={(e) => e.stopPropagation()}
+        visible={false}
       >
         <boxGeometry args={[4, 4, 4]} />
-        <meshStandardMaterial visible={false} transparent opacity={0} />
+        <meshBasicMaterial transparent opacity={0} />
       </mesh>
-
-      {/* 3D модель экспоната - масштабируется отдельно */}
       <group scale={scale} position={[0, 0, 0]}>
         <Suspense
           fallback={
@@ -590,7 +595,12 @@ function EditableExhibit({
                 </mesh>
               }
             >
-              <SafeModelWrapper modelPath={exhibit.modelPath} />
+              <SafeModelWrapper
+                modelPath={exhibit.modelPath}
+                opacity={opacity}
+                emissiveIntensity={emissiveIntensity}
+                emissiveColor={emissiveColor}
+              />
             </ModelErrorBoundary>
           ) : (
             <mesh>
@@ -600,53 +610,100 @@ function EditableExhibit({
           )}
         </Suspense>
       </group>
+    </>
+  )
+}
 
-      {/* Визуальная индикация выбранного экспоната */}
-      {isSelected && (
-        <>
-          {/* Подсветка основания - на уровне пола, масштабируется вместе с моделью */}
-          <mesh position={[0, 0, 0]} rotation={[-Math.PI / 2, 0, 0]} scale={scale}>
-            <ringGeometry args={[0.9, 1.1, 32]} />
-            <meshStandardMaterial
-              color="#3b82f6"
-              transparent
-              opacity={0.5}
-              side={THREE.DoubleSide}
-            />
-          </mesh>
-          {/* Индикатор направления (простая стрелка) - масштабируется вместе с моделью */}
-          <mesh position={[0, 2 * scale, 0]} scale={scale}>
-            <coneGeometry args={[0.2, 0.5, 8]} />
-            <meshStandardMaterial color="#3b82f6" />
-          </mesh>
-        </>
-      )}
-
-    </group>
+function SelectedIndicator({ scale }: { scale: number }) {
+  return (
+    <>
+      <mesh position={[0, 0, 0]} rotation={[-Math.PI / 2, 0, 0]} scale={scale}>
+        <ringGeometry args={[0.9, 1.1, 32]} />
+        <meshStandardMaterial color="#3b82f6" transparent opacity={0.6} side={THREE.DoubleSide} />
+      </mesh>
+      <mesh position={[0, 2 * scale, 0]} scale={scale}>
+        <coneGeometry args={[0.2, 0.5, 8]} />
+        <meshStandardMaterial color="#3b82f6" emissive="#2563eb" emissiveIntensity={0.3} />
+      </mesh>
+    </>
   )
 }
 
 export default function GalleryEditorPage() {
   const [exhibits, setExhibits] = useState<Exhibit[]>([])
   const [selectedExhibitId, setSelectedExhibitId] = useState<string | null>(null)
+  const [focusTarget, setFocusTarget] = useState<FocusTarget>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
-  const [lockHeight, setLockHeight] = useState(false) // false = обычный режим (вертикальное движение = Z), true = режим высоты (вертикальное движение = Y)
-  const [isRotating, setIsRotating] = useState(false) // true = режим вращения, false = режим перемещения
+  const [lockHeight, setLockHeight] = useState(false)
+  const [transformMode, setTransformMode] = useState<'translate' | 'rotate' | 'scale'>('translate')
   const [hasAccess, setHasAccess] = useState(false)
+  const [gridSnap, setGridSnap] = useState(false)
+  const [exhibitVisibility, setExhibitVisibility] = useState<Record<string, boolean>>({})
+  const [exhibitLocked, setExhibitLocked] = useState<Record<string, boolean>>({})
+
+  const selectExhibitAndFocus = useCallback((exhibit: Exhibit) => {
+    setSelectedExhibitId(exhibit.id)
+    setFocusTarget([
+      exhibit.galleryPositionX ?? 0,
+      exhibit.galleryPositionY ?? 0,
+      exhibit.galleryPositionZ ?? 0,
+    ])
+  }, [])
+
+  // Горячие клавиши W / E / R для смены режима трансформации
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.target instanceof HTMLInputElement ||
+        event.target instanceof HTMLTextAreaElement ||
+        event.target instanceof HTMLSelectElement
+      ) return
+      switch (event.code) {
+        case 'KeyW':
+          event.preventDefault()
+          setTransformMode('translate')
+          break
+        case 'KeyE':
+          event.preventDefault()
+          setTransformMode('rotate')
+          break
+        case 'KeyR':
+          event.preventDefault()
+          setTransformMode('scale')
+          break
+        case 'KeyF':
+          event.preventDefault()
+          if (selectedExhibitId) {
+            const ex = exhibits.find((e) => e.id === selectedExhibitId)
+            if (ex) setFocusTarget([ex.galleryPositionX ?? 0, ex.galleryPositionY ?? 0, ex.galleryPositionZ ?? 0])
+          }
+          break
+        default:
+          break
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [exhibits, selectedExhibitId, setFocusTarget])
 
   useEffect(() => {
-    // Проверяем права доступа - только для супер-админа
-    const auth = localStorage.getItem('admin_auth')
-    const role = localStorage.getItem('admin_role')
-    
-    if (auth === 'true' && role === 'super') {
-      setHasAccess(true)
-      loadExhibits()
-    } else {
-      setLoading(false)
-    }
+    let cancelled = false
+    fetch('/api/auth/me', { credentials: 'include' })
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return
+        if (data.role === 'super') {
+          setHasAccess(true)
+          loadExhibits()
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => { cancelled = true }
   }, [])
 
   const loadExhibits = async () => {
@@ -836,82 +893,187 @@ export default function GalleryEditorPage() {
   const rotationY = selectedExhibit?.galleryRotationY ?? 0
 
   return (
+    <EditorGalleryContext.Provider value={{ focusTarget, setFocusTarget, gridSnap }}>
     <div className="flex h-screen">
       {/* Боковая панель управления */}
       <div className="w-80 bg-white border-r border-gray-200 p-6 overflow-y-auto">
         <h1 className="text-2xl font-bold mb-6">Редактор галереи</h1>
 
-        {/* Список экспонатов */}
+        {/* Список экспонатов: выбор по клику + Следующий / Предыдущий + Дерево сцены (глаз/замок) */}
         <div className="mb-6">
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Выберите экспонат
+            Выберите экспонат (клик — фокус камеры)
           </label>
-          <select
-            value={selectedExhibitId || ''}
-            onChange={(e) => setSelectedExhibitId(e.target.value || null)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
-          >
-            <option value="">-- Не выбрано --</option>
-            {exhibits.map((ex) => (
-              <option key={ex.id} value={ex.id}>
-                {ex.title}
-              </option>
-            ))}
-          </select>
+          <div className="flex gap-2 mb-2">
+            <button
+              type="button"
+              onClick={() => {
+                const idx = exhibits.findIndex((e) => e.id === selectedExhibitId)
+                const prevIdx = idx <= 0 ? exhibits.length - 1 : idx - 1
+                selectExhibitAndFocus(exhibits[prevIdx])
+              }}
+              className="flex-1 py-2 px-3 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200"
+              title="Предыдущий"
+            >
+              ← Пред.
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const idx = exhibits.findIndex((e) => e.id === selectedExhibitId)
+                const nextIdx = idx < 0 ? 0 : (idx + 1) % exhibits.length
+                selectExhibitAndFocus(exhibits[nextIdx])
+              }}
+              className="flex-1 py-2 px-3 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200"
+              title="Следующий"
+            >
+              След. →
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (selectedExhibitId) {
+                  const ex = exhibits.find((e) => e.id === selectedExhibitId)
+                  if (ex) setFocusTarget([ex.galleryPositionX ?? 0, ex.galleryPositionY ?? 0, ex.galleryPositionZ ?? 0])
+                }
+              }}
+              disabled={!selectedExhibitId}
+              className="flex-1 py-2 px-3 rounded-lg text-sm font-medium bg-primary-100 text-primary-800 hover:bg-primary-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Фокус камеры на выбранный объект (F)"
+            >
+              Фокус (F)
+            </button>
+          </div>
+          <div className="border border-gray-300 rounded-lg max-h-52 overflow-y-auto">
+            {exhibits.map((ex) => {
+              const visible = exhibitVisibility[ex.id] !== false
+              const locked = exhibitLocked[ex.id] === true
+              return (
+                <div
+                  key={ex.id}
+                  className={`flex items-center gap-1 w-full text-left border-b border-gray-100 last:border-b-0 ${
+                    selectedExhibitId === ex.id ? 'bg-primary-50' : ''
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => selectExhibitAndFocus(ex)}
+                    className="flex-1 min-w-0 px-2 py-1.5 text-sm hover:bg-gray-50 text-left truncate"
+                    title={ex.title}
+                  >
+                    {ex.title}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setExhibitVisibility((v) => ({ ...v, [ex.id]: !visible })) }}
+                    className="p-1.5 rounded hover:bg-gray-200 text-gray-600"
+                    title={visible ? 'Скрыть' : 'Показать'}
+                  >
+                    {visible ? (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                    ) : (
+                      <svg className="w-4 h-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setExhibitLocked((l) => ({ ...l, [ex.id]: !locked })) }}
+                    className={`p-1.5 rounded hover:bg-gray-200 ${locked ? 'text-amber-600' : 'text-gray-500'}`}
+                    title={locked ? 'Разблокировать трансформацию' : 'Заблокировать трансформацию'}
+                  >
+                    {locked ? (
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>
+                    ) : (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" /></svg>
+                    )}
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Режим трансформации (W / E / R) */}
+        <div className="mb-6">
+          <h3 className="font-semibold text-gray-800 mb-2">Режим (W / E / R)</h3>
+          <p className="text-xs text-gray-500 mb-2">Выбранный объект отмечен синим кольцом и стрелкой; гизмо — только у выбранного.</p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setTransformMode('translate')}
+              className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
+                transformMode === 'translate' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+              title="Перемещение (W)"
+            >
+              W Перемещение
+            </button>
+            <button
+              type="button"
+              onClick={() => setTransformMode('rotate')}
+              className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
+                transformMode === 'rotate' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+              title="Вращение (E)"
+            >
+              E Вращение
+            </button>
+            <button
+              type="button"
+              onClick={() => setTransformMode('scale')}
+              className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
+                transformMode === 'scale' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+              title="Масштаб (R)"
+            >
+              R Масштаб
+            </button>
+          </div>
+        </div>
+
+        {/* Фиксация высоты (только для режима «Перемещение») */}
+        <div className="mb-6">
+          <label className="flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              checked={lockHeight}
+              onChange={(e) => setLockHeight(e.target.checked)}
+              disabled={transformMode !== 'translate'}
+              className="w-5 h-5 text-primary-600 border-gray-300 rounded focus:ring-primary-500 disabled:opacity-50"
+            />
+            <span className="ml-2 text-sm font-medium text-gray-700">
+              Фиксировать высоту (Y = 0)
+            </span>
+          </label>
+          <p className="text-xs text-gray-500 mt-1 ml-7">
+            {transformMode !== 'translate'
+              ? 'Доступно только в режиме «Перемещение»'
+              : lockHeight
+                ? 'Ось Y скрыта на гизмо, объект не проваливается под пол'
+                : 'Снять галочку, чтобы двигать объект по высоте'}
+          </p>
+        </div>
+
+        <div className="mb-6">
+          <label className="flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              checked={gridSnap}
+              onChange={(e) => setGridSnap(e.target.checked)}
+              className="w-5 h-5 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+            />
+            <span className="ml-2 text-sm font-medium text-gray-700">
+              Привязка к сетке
+            </span>
+          </label>
+          <p className="text-xs text-gray-500 mt-1 ml-7">
+            Перемещение шаг 0.5, поворот шаг 15°
+          </p>
         </div>
 
         {/* Позиция */}
         <div className="mb-6 space-y-4">
           <h3 className="font-semibold text-gray-800">Позиция</h3>
-          
-          {/* Режимы управления */}
-          <div className="mb-3 space-y-2">
-            <div>
-              <label className="flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={isRotating}
-                  onChange={(e) => setIsRotating(e.target.checked)}
-                  className="w-5 h-5 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
-                />
-                <span className="ml-2 text-sm font-medium text-gray-700">
-                  Режим вращения (зажать Shift)
-                </span>
-              </label>
-              <p className="text-xs text-gray-500 mt-1 ml-7">
-                {isRotating
-                  ? 'Горизонтальное движение мыши вращает экспонат'
-                  : 'Горизонтальное движение мыши перемещает влево/вправо (X)'}
-              </p>
-            </div>
-            <div>
-              <label className="flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={lockHeight}
-                  onChange={(e) => setLockHeight(e.target.checked)}
-                  disabled={isRotating}
-                  className="w-5 h-5 text-primary-600 border-gray-300 rounded focus:ring-primary-500 disabled:opacity-50"
-                />
-                <span className="ml-2 text-sm font-medium text-gray-700">
-                  Режим изменения высоты
-                </span>
-              </label>
-              <p className="text-xs text-gray-500 mt-1 ml-7">
-                {lockHeight
-                  ? 'Вертикальное движение мыши изменяет высоту (Y)'
-                  : 'Вертикальное движение мыши перемещает вперед/назад (Z)'}
-              </p>
-            </div>
-          </div>
-
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
-            <p className="text-xs text-blue-700">
-              💡 {lockHeight
-                ? 'Вертикальное движение мыши = изменение высоты (Y). Горизонтальное = X.'
-                : 'Вертикальное движение мыши = вперед/назад (Z). Горизонтальное = влево/вправо (X).'}
-            </p>
-          </div>
           {selectedExhibit ? (
             <div className="space-y-2">
               <div>
@@ -1046,6 +1208,12 @@ export default function GalleryEditorPage() {
           }}
           shadows={true}
         >
+          <Selection>
+            {selectedExhibitId !== null && (
+              <EffectComposer>
+                <Outline edgeStrength={3} visibleEdgeColor={0x3b82f6} blur xRay />
+              </EffectComposer>
+            )}
           {/* Улучшенное освещение */}
           <ambientLight intensity={0.4} color="#ffffff" />
           <directionalLight
@@ -1082,6 +1250,9 @@ export default function GalleryEditorPage() {
               envMapIntensity={1}
             />
           </mesh>
+
+          {/* Визуальная сетка при включённой привязке к сетке (Y=0) */}
+          <EditorGridHelper />
           
           {/* Декоративные линии на полу - убраны для чистоты дизайна */}
 
@@ -1126,14 +1297,18 @@ export default function GalleryEditorPage() {
                   scale={exhibitScale}
                   rotationY={exhibitRotation}
                   isSelected={selectedExhibitId === exhibit.id}
+                  hasSelection={!!selectedExhibitId}
+                  transformMode={transformMode}
+                  lockHeight={lockHeight}
+                  gridSnap={gridSnap}
                   onPositionChange={(pos) => handlePositionChange(exhibit.id, pos)}
                   onScaleChange={(s) => handleScaleChange(exhibit.id, s)}
                   onRotationChange={(r) => handleRotationChange(exhibit.id, r)}
                   onSelect={() => setSelectedExhibitId(exhibit.id)}
-                  onDragStart={() => setIsDragging(true)}
-                  onDragEnd={() => setIsDragging(false)}
-                  lockHeight={lockHeight}
-                  isRotating={isRotating}
+                  onControlsDragStart={() => setIsDragging(true)}
+                  onControlsDragEnd={() => setIsDragging(false)}
+                  visible={exhibitVisibility[exhibit.id] !== false}
+                  locked={exhibitLocked[exhibit.id] === true}
                 />
               )
             })}
@@ -1141,9 +1316,11 @@ export default function GalleryEditorPage() {
 
           {/* Управление камерой через WASD и мышью */}
           <EditorCameraControls bounds={GALLERY_BOUNDS} isDragging={isDragging} />
+          </Selection>
         </Canvas>
       </div>
     </div>
+    </EditorGalleryContext.Provider>
   )
 }
 

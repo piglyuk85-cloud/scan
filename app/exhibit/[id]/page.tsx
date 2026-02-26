@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import { getExhibitById, getExhibits } from '@/lib/exhibits'
 import { getPageContent } from '@/lib/pageContent'
+import { getAdminFromCookieValue } from '@/lib/auth'
 import { cookies } from 'next/headers'
 import Link from 'next/link'
 import ModelViewer from '@/components/ModelViewer'
@@ -16,14 +17,14 @@ interface PageProps {
 
 export default async function ExhibitPage({ params }: PageProps) {
   let isAdmin = false
-  let adminRole = 'admin'
-  
+  let adminRole: 'admin' | 'super' = 'admin'
+
   try {
     const cookieStore = await cookies()
-    isAdmin = cookieStore.get('admin_auth')?.value === 'true'
-    adminRole = cookieStore.get('admin_role')?.value || 'admin'
+    const session = getAdminFromCookieValue(cookieStore.get('admin_session')?.value)
+    isAdmin = !!session
+    if (session) adminRole = session.role
   } catch (error) {
-    // Если cookies недоступны (например, при статической генерации), используем значения по умолчанию
     console.warn('Не удалось получить cookies:', error)
   }
   

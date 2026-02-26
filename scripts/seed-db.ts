@@ -1,6 +1,6 @@
-import { PrismaClient } from '@prisma/client'
-
-const prisma = new PrismaClient()
+import { prisma } from '@/lib/prisma'
+import { createExhibitFromFlat } from '@/lib/exhibits'
+import type { Exhibit } from '@/types/exhibit'
 
 async function seed() {
   console.log('Создание тестовых данных...')
@@ -11,51 +11,56 @@ async function seed() {
     return
   }
 
-  // Создаем научных руководителей
+  // Кафедра (для руководителей)
+  const dept = await prisma.department.upsert({
+    where: { id: 'dept-art' },
+    update: {},
+    create: { id: 'dept-art', name: 'Кафедра изобразительного искусства' },
+  })
+
+  // Научные руководители (по id, т.к. нет unique по name)
   const supervisor1 = await prisma.supervisor.upsert({
-    where: { name: 'Петр Петров' },
+    where: { id: 'sup-1' },
     update: {},
     create: {
+      id: 'sup-1',
       name: 'Петр Петров',
       position: 'Доцент',
       rank: 'Кандидат наук',
-      department: 'Кафедра изобразительного искусства',
+      departmentId: dept.id,
     },
   })
   console.log(`✓ Создан/найден научный руководитель: ${supervisor1.name}`)
 
   const supervisor2 = await prisma.supervisor.upsert({
-    where: { name: 'Анна Смирнова' },
+    where: { id: 'sup-2' },
     update: {},
     create: {
+      id: 'sup-2',
       name: 'Анна Смирнова',
       position: 'Профессор',
       rank: 'Доктор наук',
-      department: 'Кафедра изобразительного искусства',
+      departmentId: dept.id,
     },
   })
   console.log(`✓ Создан/найден научный руководитель: ${supervisor2.name}`)
 
-  const exhibits = [
+  const exhibitsFlat: Exhibit[] = [
     {
       id: 'exhibit-1',
       title: 'Экспонат 1',
       description: 'Описание первого экспоната',
       fullDescription: 'Полное описание первого экспоната',
       category: 'Выставка',
-      year: '2024',
+      creationDate: '2024',
       studentName: 'Иван Иванов',
-      studentCourse: '3 курс',
+      studentCourse: '3',
       studentGroup: 'Группа 1',
-      supervisorId: supervisor1.id,
+      supervisor: { id: supervisor1.id, name: supervisor1.name, position: supervisor1.position ?? undefined, rank: supervisor1.rank ?? undefined },
       modelPath: '/models/model1-1764125921075.glb',
       has3DModel: true,
       previewImage: '/images/Снимок-1766367704588.PNG',
-      images: JSON.stringify(['/images/Снимок-1766367704588.PNG']),
-      creationInfo: 'Информация о создании работы',
-      technicalSpecs: JSON.stringify({}),
-      interestingFacts: JSON.stringify([]),
-      relatedExhibits: JSON.stringify([]),
+      images: ['/images/Снимок-1766367704588.PNG'],
     },
     {
       id: 'exhibit-2',
@@ -63,26 +68,20 @@ async function seed() {
       description: 'Описание второго экспоната',
       fullDescription: 'Полное описание второго экспоната',
       category: 'Выставка',
-      year: '2024',
+      creationDate: '2024',
       studentName: 'Мария Сидорова',
-      studentCourse: '4 курс',
+      studentCourse: '4',
       studentGroup: 'Группа 2',
-      supervisorId: supervisor2.id,
+      supervisor: { id: supervisor2.id, name: supervisor2.name, position: supervisor2.position ?? undefined, rank: supervisor2.rank ?? undefined },
       modelPath: '/models/artifact3_03d3553c-ff27-49c5-a69c-d85541bc4f81-1766358821019.glb',
       has3DModel: true,
       previewImage: '/images/Снимок-1766367924459.PNG',
-      images: JSON.stringify(['/images/Снимок-1766367924459.PNG']),
-      creationInfo: 'Информация о создании работы',
-      technicalSpecs: JSON.stringify({}),
-      interestingFacts: JSON.stringify([]),
-      relatedExhibits: JSON.stringify([]),
+      images: ['/images/Снимок-1766367924459.PNG'],
     },
   ]
 
-  for (const exhibit of exhibits) {
-    await prisma.exhibit.create({
-      data: exhibit,
-    })
+  for (const exhibit of exhibitsFlat) {
+    await createExhibitFromFlat(exhibit, exhibit.id)
     console.log(`✓ Создан экспонат: ${exhibit.title}`)
   }
 
@@ -227,7 +226,3 @@ seed()
   .finally(async () => {
     await prisma.$disconnect()
   })
-
-
-
-

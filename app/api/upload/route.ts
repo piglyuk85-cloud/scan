@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { writeFile, open } from 'fs/promises'
 import path from 'path'
 import { existsSync, mkdirSync } from 'fs'
+import { getAdminFromRequest } from '@/lib/auth'
 
 // Увеличиваем лимит размера тела запроса для загрузки больших 3D моделей (до 100MB)
 export const maxDuration = 300 // 5 минут для больших файлов
@@ -9,6 +10,11 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 export async function POST(request: NextRequest) {
+  const admin = await getAdminFromRequest(request)
+  if (!admin) {
+    return NextResponse.json({ error: 'Требуется авторизация для загрузки файлов' }, { status: 401 })
+  }
+
   try {
     // Логируем информацию о запросе для диагностики
     const contentLength = request.headers.get('content-length')

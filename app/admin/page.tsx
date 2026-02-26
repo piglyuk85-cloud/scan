@@ -6,134 +6,119 @@ import { Exhibit } from '@/types/exhibit'
 import ExhibitForm from '@/components/admin/ExhibitForm'
 import ExhibitList from '@/components/admin/ExhibitList'
 import PageContentEditor from '@/components/admin/PageContentEditor'
+import GuideEditor from '@/components/admin/GuideEditor'
+
+type AdminRole = 'admin' | 'super'
 
 export default function AdminPage() {
+  const router = useRouter()
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
-  const [userRole, setUserRole] = useState<'admin' | 'super' | null>(null)
+  const [userRole, setUserRole] = useState<AdminRole | null>(null)
   const [exhibits, setExhibits] = useState<Exhibit[]>([])
   const [loading, setLoading] = useState(true)
   const [editingExhibit, setEditingExhibit] = useState<Exhibit | null>(null)
   const [showForm, setShowForm] = useState(false)
-  const [activeSection, setActiveSection] = useState<'exhibits' | 'content'>('exhibits')
+  const [activeSection, setActiveSection] = useState<'exhibits' | 'content' | 'guide'>('exhibits')
+  const [loginError, setLoginError] = useState('')
 
-  const ADMIN_CREDENTIALS = {
-    admin: { password: 'adminvsu2025', role: 'admin' },
-    super: { password: '12281992', role: 'super' },
-  } as const
-
+  // Проверка сессии при загрузке (HttpOnly cookie проверяется на сервере)
   useEffect(() => {
-    // Проверяем, авторизован ли пользователь
-    const auth = localStorage.getItem('admin_auth')
-    const role = localStorage.getItem('admin_role') as 'admin' | 'super' | null
-    if (auth === 'true' && role) {
-      setIsAuthenticated(true)
-      setUserRole(role)
-      loadExhibits()
-    } else {
-      setLoading(false)
-    }
-
-    // Проверяем параметр edit в URL
-    const urlParams = new URLSearchParams(window.location.search)
-    const editId = urlParams.get('edit')
-    if (editId && auth === 'true') {
-      // Загружаем экспонат для редактирования
-      const role = localStorage.getItem('admin_role')
-      fetch(`/api/exhibits/${editId}`, {
-        headers: {
-          'x-admin-auth': 'true',
-          'x-admin-role': role || 'admin',
-        },
+    let cancelled = false
+    fetch('/api/auth/me', { credentials: 'include' })
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return
+        if (data.role) {
+          setIsAuthenticated(true)
+          setUserRole(data.role)
+          loadExhibits()
+        }
       })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.id) {
-            setEditingExhibit(data)
-            setShowForm(true)
-            setActiveSection('exhibits')
-            // Очищаем параметр из URL
-            window.history.replaceState({}, '', '/admin')
-          }
-        })
-        .catch((err) => console.error('Ошибка загрузки экспоната:', err))
-    }
+      .catch(() => {
+        if (!cancelled) setLoading(false)
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [])
 
-    // Если обычный админ попал на недоступный раздел, переключаем на экспонаты
-    if (auth === 'true' && role === 'admin') {
-      if (activeSection === 'content') {
-        setActiveSection('exhibits')
-      }
+  // Параметр ?edit=id в URL — открыть форму редактирования после проверки сессии
+  useEffect(() => {
+    if (!isAuthenticated || !userRole) return
+    const params = new URLSearchParams(window.location.search)
+    const editId = params.get('edit')
+    if (!editId) return
+    fetch(`/api/exhibits/${editId}`, { credentials: 'include' })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.id) {
+          setEditingExhibit(data)
+          setShowForm(true)
+          setActiveSection('exhibits')
+          window.history.replaceState({}, '', '/admin')
+        }
+      })
+      .catch((err) => console.error('Ошибка загрузки экспоната:', err))
+  }, [isAuthenticated, userRole])
+
+  // Для обычного админа скрыть разделы content/guide
+  useEffect(() => {
+    if (userRole === 'admin' && (activeSection === 'content' || activeSection === 'guide')) {
+      setActiveSection('exhibits')
     }
-  }, [activeSection])
+  }, [userRole, activeSection])
 
   const loadExhibits = async () => {
     try {
-      // В админ-панели загружаем все экспонаты, включая приватные
-      const role = localStorage.getItem('admin_role')
-      const response = await fetch('/api/exhibits', {
-        headers: {
-          'x-admin-auth': 'true',
-          'x-admin-role': role || 'admin',
-        },
-      })
+      const response = await fetch('/api/exhibits', { credentials: 'include' })
       if (response.ok) {
         const data = await response.json()
         setExhibits(data)
       }
     } catch (error) {
       console.error('Ошибка загрузки экспонатов:', error)
-    } finally {
-      setLoading(false)
     }
   }
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    const credentials = ADMIN_CREDENTIALS[username as keyof typeof ADMIN_CREDENTIALS]
-    
-    if (credentials && credentials.password === password) {
-      setIsAuthenticated(true)
-      setUserRole(credentials.role)
-      localStorage.setItem('admin_auth', 'true')
-      localStorage.setItem('admin_role', credentials.role)
-      // Устанавливаем cookie для серверной проверки
-      document.cookie = `admin_auth=true; path=/; max-age=86400` // 24 часа
-      document.cookie = `admin_role=${credentials.role}; path=/; max-age=86400` // 24 часа
-      loadExhibits()
-    } else {
-      alert('Неверный логин или пароль')
+    setLoginError('')
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: username.trim(), password }),
+      credentials: 'include',
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      setLoginError(data.error || 'Ошибка входа')
+      return
     }
+    setIsAuthenticated(true)
+    setUserRole(data.role)
+    setUsername('')
+    setPassword('')
+    loadExhibits()
   }
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
     setIsAuthenticated(false)
     setUserRole(null)
-    localStorage.removeItem('admin_auth')
-    localStorage.removeItem('admin_role')
-    // Удаляем cookie
-    document.cookie = 'admin_auth=; path=/; max-age=0'
-    document.cookie = 'admin_role=; path=/; max-age=0'
     setUsername('')
     setPassword('')
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Вы уверены, что хотите удалить эту работу?')) {
-      return
-    }
-
+    if (!confirm('Вы уверены, что хотите удалить эту работу?')) return
     try {
-      const role = localStorage.getItem('admin_role') || 'admin'
       const response = await fetch(`/api/exhibits/${id}`, {
         method: 'DELETE',
-        headers: {
-          'x-admin-auth': 'true',
-          'x-admin-role': role,
-        },
+        credentials: 'include',
       })
-
       if (response.ok) {
         loadExhibits()
         alert('Работа удалена')
@@ -175,12 +160,12 @@ export default function AdminPage() {
     return (
       <div className="container mx-auto max-w-md px-4 py-12">
         <div className="bg-white rounded-lg shadow-md p-8">
-            <h1 className="text-3xl font-bold mb-2 text-center text-gray-800">
-              Админ-панель
-            </h1>
-            <p className="text-sm text-gray-600 text-center mb-6">
-              Виртуальная галерея ВГУ имени П.М. Машерова
-            </p>
+          <h1 className="text-3xl font-bold mb-2 text-center text-gray-800">
+            Админ-панель
+          </h1>
+          <p className="text-sm text-gray-600 text-center mb-6">
+            Виртуальная галерея ВГУ имени П.М. Машерова
+          </p>
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label
@@ -195,8 +180,9 @@ export default function AdminPage() {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                placeholder="Введите логин"
+                placeholder="admin или super"
                 required
+                autoComplete="username"
               />
             </div>
             <div>
@@ -214,8 +200,12 @@ export default function AdminPage() {
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                 placeholder="Введите пароль"
                 required
+                autoComplete="current-password"
               />
             </div>
+            {loginError && (
+              <p className="text-sm text-red-600">{loginError}</p>
+            )}
             <button
               type="submit"
               className="w-full bg-primary-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-primary-700 transition-colors"
@@ -242,13 +232,9 @@ export default function AdminPage() {
         </div>
       </div>
 
-      {/* Навигация между разделами */}
       <div className="flex gap-2 mb-6 border-b">
         <button
-          onClick={() => {
-            setActiveSection('exhibits')
-            setShowForm(false)
-          }}
+          onClick={() => { setActiveSection('exhibits'); setShowForm(false) }}
           className={`px-6 py-3 font-medium ${
             activeSection === 'exhibits'
               ? 'border-b-2 border-primary-600 text-primary-600'
@@ -257,14 +243,10 @@ export default function AdminPage() {
         >
           Экспонаты
         </button>
-        {/* Контент страниц и Редактор галереи - только для супер-админа */}
         {userRole === 'super' && (
           <>
             <button
-              onClick={() => {
-                setActiveSection('content')
-                setShowForm(false)
-              }}
+              onClick={() => { setActiveSection('content'); setShowForm(false) }}
               className={`px-6 py-3 font-medium ${
                 activeSection === 'content'
                   ? 'border-b-2 border-primary-600 text-primary-600'
@@ -272,6 +254,16 @@ export default function AdminPage() {
               }`}
             >
               Контент страниц
+            </button>
+            <button
+              onClick={() => { setActiveSection('guide'); setShowForm(false) }}
+              className={`px-6 py-3 font-medium ${
+                activeSection === 'guide'
+                  ? 'border-b-2 border-primary-600 text-primary-600'
+                  : 'text-gray-600 hover:text-gray-800'
+              }`}
+            >
+              Руководство пользователя
             </button>
             <a
               href="/admin/gallery"
@@ -283,7 +275,6 @@ export default function AdminPage() {
         )}
       </div>
 
-      {/* Контент разделов */}
       {activeSection === 'exhibits' && (
         <>
           {!showForm ? (
@@ -297,10 +288,7 @@ export default function AdminPage() {
                 </p>
               </div>
               <button
-                onClick={() => {
-                  setEditingExhibit(null)
-                  setShowForm(true)
-                }}
+                onClick={() => { setEditingExhibit(null); setShowForm(true) }}
                 className="bg-primary-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-primary-700 transition-colors flex items-center gap-2 shadow-md"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -341,14 +329,13 @@ export default function AdminPage() {
         </>
       )}
 
-      {/* Контент страниц - только для супер-админа */}
       {activeSection === 'content' && userRole === 'super' && (
-        <PageContentEditor onSave={() => {
-          // Перезагружаем страницу для обновления контента
-          window.location.reload()
-        }} />
+        <PageContentEditor onSave={() => window.location.reload()} />
+      )}
+
+      {activeSection === 'guide' && userRole === 'super' && (
+        <GuideEditor />
       )}
     </div>
   )
 }
-

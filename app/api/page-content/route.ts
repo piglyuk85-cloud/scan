@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getPageContent, savePageContent } from '@/lib/pageContent'
+import { getAdminFromRequest } from '@/lib/auth'
 
 export async function GET() {
   try {
@@ -15,6 +16,10 @@ export async function GET() {
 }
 
 export async function PUT(request: NextRequest) {
+  const admin = await getAdminFromRequest(request)
+  if (!admin || admin.role !== 'super') {
+    return NextResponse.json({ error: 'Недостаточно прав для редактирования контента страниц' }, { status: 403 })
+  }
   try {
     const body = await request.json()
     await savePageContent(body)
@@ -29,6 +34,10 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const admin = await getAdminFromRequest(request)
+  if (!admin || admin.role !== 'super') {
+    return NextResponse.json({ error: 'Недостаточно прав для редактирования контента страниц' }, { status: 403 })
+  }
   try {
     const body = await request.json()
     await savePageContent(body)

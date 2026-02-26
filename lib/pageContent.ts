@@ -122,7 +122,13 @@ function getDefaultContent(): PageContent {
       footer: {
         description: 'Описание',
         copyright: '© 2024',
-        links: [],
+        links: [
+          { label: 'Главная', href: '/' },
+          { label: 'Каталог', href: '/catalog' },
+          { label: 'Виртуальная галерея', href: '/gallery' },
+          { label: 'О галерее', href: '/about' },
+          { label: 'Руководство пользователя', href: '/user-guide' },
+        ],
         navigationTitle: 'Навигация',
         contactsTitle: 'Контакты',
         contactsAddress: 'ВГУ имени П.М. Машерова\nХудожественный факультет\nг. Витебск',

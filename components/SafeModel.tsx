@@ -38,9 +38,15 @@ function disposeScene(scene: THREE.Object3D) {
 
 interface SafeModelProps {
   modelPath: string
+  /** Прозрачность (1 = полностью непрозрачно). Для эффекта фокуса у невыбранных — 0.35 */
+  opacity?: number
+  /** Интенсивность свечения для выделения выбранного объекта */
+  emissiveIntensity?: number
+  /** Цвет свечения (например, '#3b82f6') */
+  emissiveColor?: string
 }
 
-function ModelLoader({ modelPath }: { modelPath: string }) {
+function ModelLoader({ modelPath, opacity = 1, emissiveIntensity = 0, emissiveColor = '#3b82f6' }: { modelPath: string; opacity?: number; emissiveIntensity?: number; emissiveColor?: string }) {
   const groupRef = useRef<THREE.Group>(null)
   const processedSceneRef = useRef<THREE.Group | null>(null)
 
@@ -79,6 +85,29 @@ function ModelLoader({ modelPath }: { modelPath: string }) {
     return clonedScene
   }, [scene])
 
+  // Применяем opacity и emissive к материалам при изменении пропсов
+  useEffect(() => {
+    const root = processedSceneRef.current
+    if (!root) return
+    const color = new THREE.Color(emissiveColor)
+    root.traverse((child) => {
+      if (child instanceof THREE.Mesh && child.material) {
+        const materials = Array.isArray(child.material) ? child.material : [child.material]
+        materials.forEach((mat) => {
+          if (mat instanceof THREE.MeshStandardMaterial) {
+            mat.transparent = opacity < 1
+            mat.opacity = opacity
+            mat.emissive = color.clone()
+            mat.emissiveIntensity = emissiveIntensity
+          } else if (mat instanceof THREE.MeshBasicMaterial) {
+            mat.transparent = opacity < 1
+            mat.opacity = opacity
+          }
+        })
+      }
+    })
+  }, [opacity, emissiveIntensity, emissiveColor])
+
   // Очистка ресурсов при размонтировании
   useEffect(() => {
     return () => {
@@ -107,7 +136,7 @@ function ModelLoader({ modelPath }: { modelPath: string }) {
   )
 }
 
-export default function SafeModelWrapper({ modelPath }: SafeModelProps) {
+export default function SafeModelWrapper({ modelPath, opacity = 1, emissiveIntensity = 0, emissiveColor = '#3b82f6' }: SafeModelProps) {
   if (!modelPath || !modelPath.trim()) {
     return (
       <mesh>
@@ -134,7 +163,7 @@ export default function SafeModelWrapper({ modelPath }: SafeModelProps) {
           </mesh>
         }
       >
-        <ModelLoader modelPath={modelPath} />
+        <ModelLoader modelPath={modelPath} opacity={opacity} emissiveIntensity={emissiveIntensity} emissiveColor={emissiveColor} />
       </ErrorBoundary>
     </Suspense>
   )

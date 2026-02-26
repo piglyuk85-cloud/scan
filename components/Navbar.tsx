@@ -10,13 +10,15 @@ export default function Navbar() {
   const [siteName, setSiteName] = useState('ВГУ Галерея')
   const [isSuperAdmin, setIsSuperAdmin] = useState(false)
 
-  // Проверяем, является ли пользователь супер-администратором
+  // Роль определяем через API (сессия в HttpOnly cookie)
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const auth = localStorage.getItem('admin_auth')
-      const role = localStorage.getItem('admin_role')
-      setIsSuperAdmin(auth === 'true' && role === 'super')
-    }
+    if (typeof window === 'undefined') return
+    fetch('/api/auth/me', { credentials: 'include' })
+      .then((res) => res.json())
+      .then((data) => {
+        setIsSuperAdmin(data.role === 'super')
+      })
+      .catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -35,6 +37,7 @@ export default function Navbar() {
     { href: '/catalog', label: 'Каталог' },
     { href: '/gallery', label: 'Виртуальная галерея' },
     { href: '/about', label: 'О галерее' },
+    { href: '/user-guide', label: 'Руководство' },
   ])
 
   useEffect(() => {
@@ -50,11 +53,12 @@ export default function Navbar() {
             { href: '/catalog', label: data.settings.navigation.catalog },
             { href: '/gallery', label: data.settings.navigation.virtualGallery },
             { href: '/about', label: data.settings.navigation.about },
+            { href: '/user-guide', label: 'Руководство' },
           ]
           
-          // Добавляем ссылку на камеру только для супер-администратора
+          // Добавляем ссылку на камеру только для супер-администратора (перед Руководством)
           if (isSuperAdmin) {
-            links.splice(3, 0, { href: '/camera', label: data.settings.navigation.camera || 'Камера' })
+            links.splice(4, 0, { href: '/camera', label: data.settings.navigation.camera || 'Камера' })
           }
           
           setNavLinks(links)

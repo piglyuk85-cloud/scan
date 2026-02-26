@@ -59,3 +59,13 @@ Thumbs.db
 test_output*
 qr-codes/*.png
 qr-codes/*.svg
+
+# Local uploads and assets (не храним в репозитории)
+storage/models/*
+!storage/models/.gitkeep
+public/images/*
+!public/images/.gitkeep
+
+# Локальные файлы дипломной презентации/доклада
+ПРЕЗЕНТАЦИЯ_ДИПЛОМ_ПО_КОДУ.md
+ДОКЛАД_ЗАЩИТА_ДИПЛОМА.md

@@ -17,19 +17,20 @@ export default function CameraPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const animationFrameRef = useRef<number | null>(null)
 
-  // Проверяем права доступа - только для super-admin
+  // Проверяем права доступа через API (сессия в HttpOnly cookie)
   useEffect(() => {
     setIsMounted(true)
-    const auth = localStorage.getItem('admin_auth')
-    const role = localStorage.getItem('admin_role')
-    
-    if (auth === 'true' && role === 'super') {
-      setHasAccess(true)
-      setLoading(false)
-    } else {
-      // Если не супер-администратор, перенаправляем на главную
-      router.push('/')
-    }
+    fetch('/api/auth/me', { credentials: 'include' })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.role === 'super') {
+          setHasAccess(true)
+        } else {
+          router.push('/')
+        }
+      })
+      .catch(() => router.push('/'))
+      .finally(() => setLoading(false))
   }, [router])
 
   useEffect(() => {

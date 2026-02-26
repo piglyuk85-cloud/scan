@@ -1,27 +1,22 @@
-import { PrismaClient } from '@prisma/client'
 import { readFile } from 'fs/promises'
 import path from 'path'
 import { Exhibit } from '@/types/exhibit'
 import { PageContent } from '@/types/pageContent'
-
-// Инициализируем Prisma Client
-const prisma = new PrismaClient()
+import { prisma } from '@/lib/prisma'
+import { createExhibitFromFlat } from '@/lib/exhibits'
 
 /**
- * Скрипт для миграции данных из JSON файлов в БД
- * 
- * ВАЖНО: Этот скрипт требует наличия JSON файлов в папке data/
- * Если файлы отсутствуют, скрипт завершится с ошибкой.
- * 
+ * Скрипт для миграции данных из JSON файлов в БД (новая схема: Category, Student, Supervisor, Exhibit, MediaResource, GallerySettings).
+ *
  * Использование:
  * 1. Поместите exhibits.json и pageContent.json в папку data/
  * 2. Запустите: npm run migrate:data
  */
 async function migrateExhibits() {
   console.log('Миграция экспонатов...')
-  
+
   const exhibitsPath = path.join(process.cwd(), 'data', 'exhibits.json')
-  
+
   try {
     const exhibitsData = await readFile(exhibitsPath, 'utf-8')
     const exhibits: Exhibit[] = JSON.parse(exhibitsData)
@@ -31,81 +26,15 @@ async function migrateExhibits() {
 
     for (const exhibit of exhibits) {
       try {
-        // Обрабатываем Supervisor: находим или создаем
-        let supervisorId: string | null = null
-        if (exhibit.supervisor) {
-          // Если supervisor - строка (старый формат)
-          const supervisorName = typeof exhibit.supervisor === 'string' 
-            ? exhibit.supervisor 
-            : exhibit.supervisor.name
-
-          if (supervisorName) {
-            // Ищем существующего руководителя по имени
-            let supervisor = await prisma.supervisor.findUnique({
-              where: { name: supervisorName },
-            })
-
-            // Если не найден, создаем нового
-            if (!supervisor) {
-              const supervisorData = typeof exhibit.supervisor === 'string'
-                ? { name: supervisorName }
-                : {
-                    name: exhibit.supervisor.name,
-                    position: exhibit.supervisor.position || null,
-                    rank: exhibit.supervisor.rank || null,
-                    department: exhibit.supervisor.department || null,
-                  }
-
-              supervisor = await prisma.supervisor.create({
-                data: supervisorData,
-              })
-            }
-            supervisorId = supervisor.id
-          }
+        const flat: Exhibit = {
+          ...exhibit,
+          creationDate: exhibit.creationDate || exhibit.year || undefined,
+          supervisor:
+            typeof exhibit.supervisor === 'string'
+              ? { id: '', name: exhibit.supervisor }
+              : exhibit.supervisor,
         }
-
-        await prisma.exhibit.upsert({
-          where: { id: exhibit.id },
-          update: {
-            title: exhibit.title,
-            description: exhibit.description,
-            fullDescription: exhibit.fullDescription || '',
-            category: exhibit.category,
-            year: exhibit.year || null,
-            studentName: exhibit.studentName || null,
-            studentCourse: exhibit.studentCourse || null,
-            studentGroup: exhibit.studentGroup || null,
-            supervisorId: supervisorId,
-            modelPath: exhibit.modelPath || null,
-            has3DModel: exhibit.has3DModel || false,
-            previewImage: exhibit.previewImage || null,
-            images: JSON.stringify(exhibit.images || []),
-            creationInfo: exhibit.creationInfo || '',
-            technicalSpecs: JSON.stringify(exhibit.technicalSpecs || {}),
-            interestingFacts: JSON.stringify(exhibit.interestingFacts || []),
-            relatedExhibits: JSON.stringify(exhibit.relatedExhibits || []),
-          },
-          create: {
-            id: exhibit.id,
-            title: exhibit.title,
-            description: exhibit.description,
-            fullDescription: exhibit.fullDescription || '',
-            category: exhibit.category,
-            year: exhibit.year || null,
-            studentName: exhibit.studentName || null,
-            studentCourse: exhibit.studentCourse || null,
-            studentGroup: exhibit.studentGroup || null,
-            supervisorId: supervisorId,
-            modelPath: exhibit.modelPath || null,
-            has3DModel: exhibit.has3DModel || false,
-            previewImage: exhibit.previewImage || null,
-            images: JSON.stringify(exhibit.images || []),
-            creationInfo: exhibit.creationInfo || '',
-            technicalSpecs: JSON.stringify(exhibit.technicalSpecs || {}),
-            interestingFacts: JSON.stringify(exhibit.interestingFacts || []),
-            relatedExhibits: JSON.stringify(exhibit.relatedExhibits || []),
-          },
-        })
+        await createExhibitFromFlat(flat, exhibit.id)
         migrated++
         console.log(`✓ Мигрирован экспонат: ${exhibit.id}`)
       } catch (error) {
@@ -124,9 +53,9 @@ async function migrateExhibits() {
 
 async function migratePageContent() {
   console.log('\nМиграция контента страниц...')
-  
+
   const pageContentPath = path.join(process.cwd(), 'data', 'pageContent.json')
-  
+
   try {
     const pageContentData = await readFile(pageContentPath, 'utf-8')
     const pageContent: PageContent = JSON.parse(pageContentData)
@@ -156,8 +85,6 @@ async function main() {
     console.log('\n✅ Миграция завершена успешно!')
   } catch (error) {
     console.error('\n❌ Ошибка миграции:', error)
-    console.error('\nПримечание: Проект теперь работает исключительно с БД.')
-    console.error('JSON файлы используются только для первоначальной миграции данных.')
     process.exit(1)
   } finally {
     await prisma.$disconnect()
@@ -165,4 +92,3 @@ async function main() {
 }
 
 main()
-
