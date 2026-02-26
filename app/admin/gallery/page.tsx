@@ -413,9 +413,8 @@ function EditableExhibit({
   locked = false,
 }: GalleryEditorProps) {
   const groupRef = useRef<THREE.Group>(null)
-  // Используем свой тип вместо THREE.TransformControls, которого нет в d.ts
-  type TransformControlsLike = THREE.Object3D & { gizmo?: THREE.Object3D; plane?: THREE.Object3D }
-  const controlsRef = useRef<TransformControlsLike | null>(null)
+  // ref для TransformControls из drei; тип из three-stdlib не экспортируется в @types/three
+  const controlsRef = useRef<THREE.Object3D | null>(null)
   const [isHovered, setIsHovered] = useState(false)
   const [lockFlash, setLockFlash] = useState(false)
 
@@ -497,8 +496,8 @@ function EditableExhibit({
     <>
       {isSelected && !locked ? (
         <TransformControls
-          ref={controlsRef}
-          object={groupRef as React.RefObject<THREE.Group>}
+          ref={controlsRef as any}
+          object={groupRef as any}
           mode={transformMode}
           showX={true}
           showY={!lockHeight}
@@ -522,7 +521,7 @@ function EditableExhibit({
               scale={[scale, scale, scale]}
               visible={visible}
             >
-              <ExhibitContent exhibit={exhibit} scale={scale} isHovered={isHovered} onSelect={handleClickSelect} isSelected={isSelected} hasSelection={hasSelection} lockFlash={lockFlash} />
+              <ExhibitContent exhibit={exhibit} scale={scale} isHovered={isHovered} onSelect={() => handleClickSelect(undefined as any)} isSelected={isSelected} hasSelection={hasSelection} lockFlash={lockFlash} />
               <SelectedIndicator scale={scale} />
             </group>
           </Select>
@@ -538,7 +537,7 @@ function EditableExhibit({
           onPointerOver={(e) => { e.stopPropagation(); setIsHovered(true) }}
           onPointerOut={(e) => { e.stopPropagation(); setIsHovered(false) }}
         >
-          <ExhibitContent exhibit={exhibit} scale={scale} isHovered={isHovered} onSelect={handleClickSelect} isSelected={isSelected} hasSelection={hasSelection} lockFlash={lockFlash} />
+          <ExhibitContent exhibit={exhibit} scale={scale} isHovered={isHovered} onSelect={() => handleClickSelect(undefined as any)} isSelected={isSelected} hasSelection={hasSelection} lockFlash={lockFlash} />
           {isSelected && <SelectedIndicator scale={scale} />}
         </group>
       )}
