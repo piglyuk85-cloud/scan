@@ -413,7 +413,9 @@ function EditableExhibit({
   locked = false,
 }: GalleryEditorProps) {
   const groupRef = useRef<THREE.Group>(null)
-  const controlsRef = useRef<THREE.TransformControls>(null)
+  // Используем свой тип вместо THREE.TransformControls, которого нет в d.ts
+  type TransformControlsLike = THREE.Object3D & { gizmo?: THREE.Object3D; plane?: THREE.Object3D }
+  const controlsRef = useRef<TransformControlsLike | null>(null)
   const [isHovered, setIsHovered] = useState(false)
   const [lockFlash, setLockFlash] = useState(false)
 
@@ -443,7 +445,7 @@ function EditableExhibit({
   // При внедрении режима «от первого лица» рассмотреть отдельный слой рендеринга для гизмо,
   // чтобы стрелки не рисовались сквозь руки/тело камеры (например, слой 1 для гизмо и отсечение по слою).
   useEffect(() => {
-    const ctrl = controlsRef.current as unknown as THREE.Object3D & { gizmo?: THREE.Object3D; plane?: THREE.Object3D }
+    const ctrl = controlsRef.current
     if (!ctrl || !isSelected || locked) return
     const setDepthTest = (obj: THREE.Object3D) => {
       obj.traverse((child) => {
