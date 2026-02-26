@@ -2,6 +2,9 @@ import { Exhibit } from '@/types/exhibit'
 import { prisma } from './prisma'
 import type { Prisma, PrismaClient } from '@prisma/client'
 import path from 'path'
+
+/** Клиент внутри $transaction — без $connect, $disconnect, $transaction и т.д. */
+type PrismaTx = Parameters<Parameters<typeof prisma.$transaction>[0]>[0]
 import { unlink } from 'fs/promises'
 import { existsSync } from 'fs'
 
@@ -240,7 +243,7 @@ async function getOrCreateCategory(name: string): Promise<string | null> {
   return created.id
 }
 
-async function getOrCreateCategoryWithTx(tx: PrismaClient, name: string): Promise<string | null> {
+async function getOrCreateCategoryWithTx(tx: PrismaTx, name: string): Promise<string | null> {
   if (!name?.trim()) return null
   const existing = await tx.category.findUnique({ where: { name: name.trim() } })
   if (existing) return existing.id
@@ -265,7 +268,7 @@ async function getOrCreateStudent(data: { name?: string; course?: string; groupC
   return created.id
 }
 
-async function getOrCreateStudentWithTx(tx: PrismaClient, data: { name?: string; course?: string; groupCode?: string }): Promise<string | null> {
+async function getOrCreateStudentWithTx(tx: PrismaTx, data: { name?: string; course?: string; groupCode?: string }): Promise<string | null> {
   if (!data.name?.trim()) return null
   const courseNum = data.course ? parseInt(data.course, 10) : null
   const existing = await tx.student.findFirst({
@@ -290,7 +293,7 @@ async function getOrCreateDepartment(name: string): Promise<string | null> {
   return created.id
 }
 
-async function getOrCreateDepartmentWithTx(tx: PrismaClient, name: string): Promise<string | null> {
+async function getOrCreateDepartmentWithTx(tx: PrismaTx, name: string): Promise<string | null> {
   if (!name?.trim()) return null
   const existing = await tx.department.findFirst({ where: { name: name.trim() } })
   if (existing) return existing.id
@@ -324,7 +327,7 @@ async function getOrCreateSupervisor(data: {
   return created.id
 }
 
-async function getOrCreateSupervisorWithTx(tx: PrismaClient, data: {
+async function getOrCreateSupervisorWithTx(tx: PrismaTx, data: {
   name: string
   position?: string
   rank?: string
