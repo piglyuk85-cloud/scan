@@ -1,6 +1,6 @@
 import { Exhibit } from '@/types/exhibit'
 import { prisma } from './prisma'
-import type { PrismaClient } from '@prisma/client'
+import type { Prisma, PrismaClient } from '@prisma/client'
 import path from 'path'
 import { unlink } from 'fs/promises'
 import { existsSync } from 'fs'
@@ -127,7 +127,7 @@ export async function getExhibitsPaginated(params: GetExhibitsPaginatedParams): 
   } = params
 
   const searchTrim = search.trim()
-  const conditions: Parameters<typeof prisma.exhibit.findMany>[0]['where'][] = []
+  const conditions: Prisma.ExhibitWhereInput[] = []
 
   if (!includePrivate) {
     conditions.push({ isPublic: true })
