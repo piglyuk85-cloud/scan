@@ -1519,7 +1519,7 @@ export default function VirtualGallery({ exhibits }: VirtualGalleryProps) {
         </div>
       )}
 
-      {isMobile && controlsMode === 'firstperson' && (
+      {isMobile && controlsMode === 'firstperson' && !selectedExhibitForInfo && (
         <>
           <MobileJoystick onVectorChange={handleMobileJoystickChange} />
           <MobileControls
