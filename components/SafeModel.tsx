@@ -2,7 +2,11 @@
 
 import React, { Suspense, useRef, useMemo, useEffect } from 'react'
 import { useGLTF } from '@react-three/drei'
+import { useFrame } from '@react-three/fiber'
+import type { ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
+
+const DRACO_DECODER_URL = 'https://www.gstatic.com/draco/versioned/decoders/1.5.5/gltf/'
 
 // Функция для очистки ресурсов Three.js из сцены
 function disposeScene(scene: THREE.Object3D) {
@@ -44,26 +48,68 @@ interface SafeModelProps {
   emissiveIntensity?: number
   /** Цвет свечения (например, '#3b82f6') */
   emissiveColor?: string
+  /** Подсветка при наведении курсора */
+  isHovered?: boolean
+  onPointerDown?: (event: ThreeEvent<PointerEvent>) => void
+  onPointerUp?: (event: ThreeEvent<PointerEvent>) => void
+  onPointerOver?: (event: ThreeEvent<PointerEvent>) => void
+  onPointerOut?: (event: ThreeEvent<PointerEvent>) => void
+  interactionId?: string
+  isMobile?: boolean
+  isSelected?: boolean
 }
 
-function ModelLoader({ modelPath, opacity = 1, emissiveIntensity = 0, emissiveColor = '#3b82f6' }: { modelPath: string; opacity?: number; emissiveIntensity?: number; emissiveColor?: string }) {
+function ModelLoader({
+  modelPath,
+  opacity = 1,
+  emissiveIntensity = 0,
+  emissiveColor = '#3b82f6',
+  isHovered = false,
+  onPointerDown,
+  onPointerUp,
+  onPointerOver,
+  onPointerOut,
+  interactionId,
+  isMobile = false,
+  isSelected = false,
+}: {
+  modelPath: string
+  opacity?: number
+  emissiveIntensity?: number
+  emissiveColor?: string
+  isHovered?: boolean
+  onPointerDown?: (event: ThreeEvent<PointerEvent>) => void
+  onPointerUp?: (event: ThreeEvent<PointerEvent>) => void
+  onPointerOver?: (event: ThreeEvent<PointerEvent>) => void
+  onPointerOut?: (event: ThreeEvent<PointerEvent>) => void
+  interactionId?: string
+  isMobile?: boolean
+  isSelected?: boolean
+}) {
   const groupRef = useRef<THREE.Group>(null)
   const processedSceneRef = useRef<THREE.Group | null>(null)
+  const standardMaterialsRef = useRef<THREE.MeshStandardMaterial[]>([])
+  const emissiveCurrentRef = useRef(0)
+  const emissiveTargetRef = useRef(0)
+  const selectionRingRef = useRef<THREE.Mesh>(null)
 
   const normalizedPath = modelPath.startsWith('/') ? modelPath : `/${modelPath}`
-  const { scene } = useGLTF(normalizedPath) as { scene: THREE.Group }
+  const { scene } = useGLTF(normalizedPath, DRACO_DECODER_URL) as { scene: THREE.Group }
 
-  const processedScene = useMemo(() => {
-    // Освобождаем предыдущую сцену перед созданием новой
-    if (processedSceneRef.current) {
-      disposeScene(processedSceneRef.current)
-      processedSceneRef.current = null
+  useEffect(() => {
+    useGLTF.preload(normalizedPath, DRACO_DECODER_URL)
+  }, [normalizedPath])
+
+  const { processedScene, proxyCenter, proxySize } = useMemo(() => {
+    if (!scene) {
+      return {
+        processedScene: null,
+        proxyCenter: [0, 0.5, 0] as [number, number, number],
+        proxySize: [1, 1, 1] as [number, number, number],
+      }
     }
 
-    if (!scene) return null
-
     const clonedScene = scene.clone()
-    processedSceneRef.current = clonedScene
 
     const box = new THREE.Box3().setFromObject(clonedScene)
     const size = box.getSize(new THREE.Vector3())
@@ -82,23 +128,55 @@ function ModelLoader({ modelPath, opacity = 1, emissiveIntensity = 0, emissiveCo
     const minY = scaledBox.min.y
     clonedScene.position.y = -minY + 0.05
 
-    return clonedScene
+    const finalBox = new THREE.Box3().setFromObject(clonedScene)
+    const finalSize = finalBox.getSize(new THREE.Vector3())
+    const finalCenter = finalBox.getCenter(new THREE.Vector3())
+
+    return {
+      processedScene: clonedScene,
+      proxyCenter: [finalCenter.x, finalCenter.y, finalCenter.z] as [number, number, number],
+      proxySize: [
+        Math.max(finalSize.x, 0.6),
+        Math.max(finalSize.y, 0.6),
+        Math.max(finalSize.z, 0.6),
+      ] as [number, number, number],
+    }
   }, [scene])
+
+  // Управление жизненным циклом clonedScene переносим в эффект, чтобы не делать side-effects в рендере
+  useEffect(() => {
+    const previousScene = processedSceneRef.current
+    processedSceneRef.current = processedScene
+
+    if (previousScene && previousScene !== processedScene) {
+      const rafId = requestAnimationFrame(() => {
+        disposeScene(previousScene)
+      })
+      return () => cancelAnimationFrame(rafId)
+    }
+    return
+  }, [processedScene])
 
   // Применяем opacity и emissive к материалам при изменении пропсов
   useEffect(() => {
     const root = processedSceneRef.current
     if (!root) return
     const color = new THREE.Color(emissiveColor)
+    const hoverBoost = isHovered ? 0.22 : 0
+    emissiveTargetRef.current = emissiveIntensity + hoverBoost
+    const collectedMaterials: THREE.MeshStandardMaterial[] = []
+
     root.traverse((child) => {
       if (child instanceof THREE.Mesh && child.material) {
         const materials = Array.isArray(child.material) ? child.material : [child.material]
         materials.forEach((mat) => {
           if (mat instanceof THREE.MeshStandardMaterial) {
+            collectedMaterials.push(mat)
+            mat.envMapIntensity = 1.5
             mat.transparent = opacity < 1
             mat.opacity = opacity
             mat.emissive = color.clone()
-            mat.emissiveIntensity = emissiveIntensity
+            mat.emissiveIntensity = emissiveCurrentRef.current
           } else if (mat instanceof THREE.MeshBasicMaterial) {
             mat.transparent = opacity < 1
             mat.opacity = opacity
@@ -106,7 +184,27 @@ function ModelLoader({ modelPath, opacity = 1, emissiveIntensity = 0, emissiveCo
         })
       }
     })
-  }, [opacity, emissiveIntensity, emissiveColor])
+    standardMaterialsRef.current = collectedMaterials
+  }, [opacity, emissiveIntensity, emissiveColor, isHovered])
+
+  // Плавный переход подсветки (~150-200ms), чтобы избежать резкой "вспышки" на hover
+  useFrame((_, delta) => {
+    const smoothing = 1 - Math.exp(-delta * 12)
+    emissiveCurrentRef.current = THREE.MathUtils.lerp(
+      emissiveCurrentRef.current,
+      emissiveTargetRef.current,
+      smoothing
+    )
+    const materials = standardMaterialsRef.current
+    for (let i = 0; i < materials.length; i++) {
+      materials[i].emissiveIntensity = emissiveCurrentRef.current
+    }
+
+    if (selectionRingRef.current) {
+      const pulse = 0.85 + Math.sin(performance.now() * 0.006) * 0.12
+      selectionRingRef.current.scale.setScalar(pulse)
+    }
+  })
 
   // Очистка ресурсов при размонтировании
   useEffect(() => {
@@ -120,7 +218,12 @@ function ModelLoader({ modelPath, opacity = 1, emissiveIntensity = 0, emissiveCo
 
   if (!processedScene) {
     return (
-      <mesh>
+      <mesh
+        onPointerDown={onPointerDown}
+        onPointerUp={onPointerUp}
+        onPointerOver={onPointerOver}
+        onPointerOut={onPointerOut}
+      >
         <boxGeometry args={[1, 1, 1]} />
         <meshStandardMaterial color="#d1d5db" />
       </mesh>
@@ -128,18 +231,59 @@ function ModelLoader({ modelPath, opacity = 1, emissiveIntensity = 0, emissiveCo
   }
 
   return (
-    <primitive
-      ref={groupRef}
-      object={processedScene}
-      position={[0, 0, 0]}
-    />
+    <group ref={groupRef} position={[0, 0, 0]}>
+      {isMobile && isSelected && (
+        <mesh
+          ref={selectionRingRef}
+          position={[proxyCenter[0], 0.03, proxyCenter[2]]}
+          rotation={[-Math.PI / 2, 0, 0]}
+          renderOrder={2}
+        >
+          <ringGeometry args={[Math.max(proxySize[0], proxySize[2]) * 0.45, Math.max(proxySize[0], proxySize[2]) * 0.62, 48]} />
+          <meshBasicMaterial color="#f5d47a" transparent opacity={0.75} depthWrite={false} />
+        </mesh>
+      )}
+      <mesh
+        position={proxyCenter}
+        visible={false}
+        castShadow={false}
+        receiveShadow={false}
+        onPointerDown={onPointerDown}
+        onPointerUp={onPointerUp}
+        onPointerOver={onPointerOver}
+        onPointerOut={onPointerOut}
+        userData={{ interactionProxy: true, exhibitId: interactionId }}
+      >
+        <boxGeometry args={proxySize} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
+      <primitive object={processedScene} position={[0, 0, 0]} raycast={() => {}} />
+    </group>
   )
 }
 
-export default function SafeModelWrapper({ modelPath, opacity = 1, emissiveIntensity = 0, emissiveColor = '#3b82f6' }: SafeModelProps) {
+export default function SafeModelWrapper({
+  modelPath,
+  opacity = 1,
+  emissiveIntensity = 0,
+  emissiveColor = '#3b82f6',
+  isHovered = false,
+  onPointerDown,
+  onPointerUp,
+  onPointerOver,
+  onPointerOut,
+  interactionId,
+  isMobile = false,
+  isSelected = false,
+}: SafeModelProps) {
   if (!modelPath || !modelPath.trim()) {
     return (
-      <mesh>
+      <mesh
+        onPointerDown={onPointerDown}
+        onPointerUp={onPointerUp}
+        onPointerOver={onPointerOver}
+        onPointerOut={onPointerOut}
+      >
         <boxGeometry args={[1, 1, 1]} />
         <meshStandardMaterial color="#d1d5db" />
       </mesh>
@@ -157,13 +301,31 @@ export default function SafeModelWrapper({ modelPath, opacity = 1, emissiveInten
     >
       <ErrorBoundary
         fallback={
-          <mesh>
+          <mesh
+            onPointerDown={onPointerDown}
+            onPointerUp={onPointerUp}
+            onPointerOver={onPointerOver}
+            onPointerOut={onPointerOut}
+          >
             <boxGeometry args={[1, 1, 1]} />
             <meshStandardMaterial color="#d1d5db" />
           </mesh>
         }
       >
-        <ModelLoader modelPath={modelPath} opacity={opacity} emissiveIntensity={emissiveIntensity} emissiveColor={emissiveColor} />
+        <ModelLoader
+          modelPath={modelPath}
+          opacity={opacity}
+          emissiveIntensity={emissiveIntensity}
+          emissiveColor={emissiveColor}
+          isHovered={isHovered}
+          onPointerDown={onPointerDown}
+          onPointerUp={onPointerUp}
+          onPointerOver={onPointerOver}
+          onPointerOut={onPointerOut}
+          interactionId={interactionId}
+          isMobile={isMobile}
+          isSelected={isSelected}
+        />
       </ErrorBoundary>
     </Suspense>
   )

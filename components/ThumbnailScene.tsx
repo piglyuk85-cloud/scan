@@ -6,6 +6,8 @@ import React, { Suspense, useMemo, useEffect, useRef } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls, PerspectiveCamera, Environment, useGLTF } from '@react-three/drei'
 
+const DRACO_DECODER_URL = 'https://www.gstatic.com/draco/versioned/decoders/1.5.5/gltf/'
+
 // Функция для очистки ресурсов Three.js из сцены
 function disposeScene(scene: THREE.Object3D) {
   scene.traverse((child) => {
@@ -44,8 +46,13 @@ interface ThumbnailSceneProps {
 }
 
 function ModelPreview({ modelPath }: { modelPath: string }) {
-  const { scene } = useGLTF(modelPath) as { scene: THREE.Group }
+  const normalizedPath = modelPath.startsWith('/') ? modelPath : `/${modelPath}`
+  const { scene } = useGLTF(normalizedPath, DRACO_DECODER_URL) as { scene: THREE.Group }
   const processedSceneRef = useRef<THREE.Group | null>(null)
+
+  useEffect(() => {
+    useGLTF.preload(normalizedPath, DRACO_DECODER_URL)
+  }, [normalizedPath])
 
   const processedScene = useMemo(() => {
     if (processedSceneRef.current) {

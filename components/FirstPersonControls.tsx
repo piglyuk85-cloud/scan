@@ -1,13 +1,19 @@
 'use client'
 
-import { useRef, useEffect, useMemo } from 'react'
+import { useRef, useEffect, useMemo, type MutableRefObject } from 'react'
 import { useThree, useFrame } from '@react-three/fiber'
 import { RigidBody, CapsuleCollider } from '@react-three/rapier'
 import * as THREE from 'three'
 
 interface FirstPersonControlsProps {
-  onMobileMove?: (direction: 'forward' | 'backward' | 'left' | 'right', active: boolean) => void
-  onMobileLook?: (deltaX: number, deltaY: number) => void
+  mobileMoveStateRef?: MutableRefObject<{
+    forward: boolean
+    backward: boolean
+    left: boolean
+    right: boolean
+  }>
+  mobileMoveVectorRef?: MutableRefObject<{ x: number; y: number; active: boolean }>
+  mobileLookDeltaRef?: MutableRefObject<{ x: number; y: number }>
   bounds?: {
     minX: number
     maxX: number
@@ -36,14 +42,16 @@ const BOBBING_MIN_VELOCITY = 0.1 // Минимальная скорость дл
 
 // Сглаживание камеры
 const CAMERA_LERP_FACTOR = 0.15 // Фактор сглаживания вращения камеры (0-1, чем меньше - тем плавнее)
+const POSITION_LERP_FACTOR = 0.1 // Сглаживание позиции камеры для фильтрации физического микродрожания
 
 // Эффект приземления
 const LANDING_DURATION = 0.3 // Длительность эффекта приземления в секундах
 const LANDING_AMPLITUDE = 0.15 // Амплитуда "приседания" при приземлении
 
 export default function FirstPersonControls({ 
-  onMobileMove, 
-  onMobileLook, 
+  mobileMoveStateRef,
+  mobileMoveVectorRef,
+  mobileLookDeltaRef,
   bounds,
   enabled = true,
   onRigidBodyReady,
@@ -80,53 +88,7 @@ export default function FirstPersonControls({
   const forwardVector = useMemo(() => new THREE.Vector3(), [])
   const rightVector = useMemo(() => new THREE.Vector3(), [])
   const velocityVector = useMemo(() => new THREE.Vector3(), [])
-
-  useEffect(() => {
-    if (!onMobileMove) return
-
-    const handleMobileMove = (direction: 'forward' | 'backward' | 'left' | 'right', active: boolean) => {
-      switch (direction) {
-        case 'forward':
-          moveForward.current = active
-          break
-        case 'backward':
-          moveBackward.current = active
-          break
-        case 'left':
-          moveLeft.current = active
-          break
-        case 'right':
-          moveRight.current = active
-          break
-      }
-    }
-
-    ;(window as any).__mobileMoveHandler = handleMobileMove
-
-    return () => {
-      delete (window as any).__mobileMoveHandler
-    }
-  }, [onMobileMove])
-
-  useEffect(() => {
-    if (!onMobileLook) return
-
-    const handleMobileLook = (deltaX: number, deltaY: number) => {
-      targetEuler.current.setFromQuaternion(camera.quaternion)
-      targetEuler.current.y -= deltaX * 0.002
-      targetEuler.current.x -= deltaY * 0.002
-      targetEuler.current.x = Math.max(-PI_2, Math.min(PI_2, targetEuler.current.x))
-      // Применяем сразу для мобильных устройств (без сглаживания для более отзывчивого управления)
-      euler.current.copy(targetEuler.current)
-      camera.quaternion.setFromEuler(euler.current)
-    }
-
-    ;(window as any).__mobileLookHandler = handleMobileLook
-
-    return () => {
-      delete (window as any).__mobileLookHandler
-    }
-  }, [onMobileLook, camera])
+  const targetPositionRef = useRef(new THREE.Vector3())
 
   useEffect(() => {
     let isPointerLocked = false
@@ -473,6 +435,27 @@ export default function FirstPersonControls({
     
     if (!isMountedRef.current || !rigidBodyRef.current || !enabled) return
 
+    // Мобильные инпуты приходят напрямую через refs (без глобальных window-хендлеров)
+    if (mobileMoveStateRef?.current) {
+      moveForward.current = mobileMoveStateRef.current.forward
+      moveBackward.current = mobileMoveStateRef.current.backward
+      moveLeft.current = mobileMoveStateRef.current.left
+      moveRight.current = mobileMoveStateRef.current.right
+    }
+
+    if (mobileLookDeltaRef?.current) {
+      const deltaX = mobileLookDeltaRef.current.x
+      const deltaY = mobileLookDeltaRef.current.y
+      if (deltaX !== 0 || deltaY !== 0) {
+        targetEuler.current.setFromQuaternion(camera.quaternion)
+        targetEuler.current.y -= deltaX * 0.002
+        targetEuler.current.x -= deltaY * 0.002
+        targetEuler.current.x = Math.max(-PI_2, Math.min(PI_2, targetEuler.current.x))
+        mobileLookDeltaRef.current.x = 0
+        mobileLookDeltaRef.current.y = 0
+      }
+    }
+
     // Отключение синхронизации: если enabled=false, не вызываем методы rigidBody
     // Это предотвращает ошибки "recursive use of an object" и "expected instance of m"
     if (!enabled) {
@@ -554,8 +537,13 @@ export default function FirstPersonControls({
     
     // Вычисляем направление движения на основе взгляда камеры
     // Инвертируем forward, так как в Three.js камера смотрит по отрицательной Z-оси
-    const forward = Number(moveBackward.current) - Number(moveForward.current)
-    const right = Number(moveRight.current) - Number(moveLeft.current)
+    let forward = Number(moveBackward.current) - Number(moveForward.current)
+    let right = Number(moveRight.current) - Number(moveLeft.current)
+
+    if (mobileMoveVectorRef?.current?.active) {
+      forward = -mobileMoveVectorRef.current.y
+      right = mobileMoveVectorRef.current.x
+    }
 
     // Обнуляем вектор скорости для горизонтального движения
     velocityVector.set(0, 0, 0)
@@ -631,7 +619,13 @@ export default function FirstPersonControls({
       posY -= landingOffset
     }
 
-    camera.position.set(posX, posY, posZ)
+    // Небольшой вертикальный оффсет снижает риск микроконтактов с полом и визуального jitter
+    posY += 0.01
+
+    // Плавное следование камеры за физическим телом вместо жесткой привязки
+    const targetPosition = targetPositionRef.current
+    targetPosition.set(posX, posY, posZ)
+    camera.position.lerp(targetPosition, POSITION_LERP_FACTOR)
 
     // Ограничиваем позицию границами (если заданы)
     if (bounds) {
@@ -654,7 +648,8 @@ export default function FirstPersonControls({
           y: clampedY,
           z: clampedZ,
         })
-        camera.position.set(clampedX, clampedY, clampedZ)
+        targetPositionRef.current.set(clampedX, clampedY, clampedZ)
+        camera.position.lerp(targetPositionRef.current, POSITION_LERP_FACTOR)
       }
     } else {
       // Фиксируем высоту на 1.6 (центр капсулы) только если нет гравитации
@@ -666,7 +661,8 @@ export default function FirstPersonControls({
             y: targetY,
             z: posZ,
           })
-          camera.position.set(posX, targetY, posZ)
+          targetPositionRef.current.set(posX, targetY, posZ)
+          camera.position.lerp(targetPositionRef.current, POSITION_LERP_FACTOR)
         }
       }
     }

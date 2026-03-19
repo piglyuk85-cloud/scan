@@ -5,6 +5,8 @@ import { Canvas } from '@react-three/fiber'
 import { OrbitControls, PerspectiveCamera, Environment, useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
 
+const DRACO_DECODER_URL = 'https://www.gstatic.com/draco/versioned/decoders/1.5.5/gltf/'
+
 // Функция для очистки ресурсов Three.js из сцены
 function disposeScene(scene: THREE.Object3D) {
   scene.traverse((child) => {
@@ -69,7 +71,11 @@ function Model({
   const normalizedPath = modelPath.startsWith('/') ? modelPath : `/${modelPath}`
   
   // useGLTF может выбросить ошибку, но она будет перехвачена ErrorBoundary
-  const { scene } = useGLTF(normalizedPath) as { scene: THREE.Group }
+  const { scene } = useGLTF(normalizedPath, DRACO_DECODER_URL) as { scene: THREE.Group }
+
+  useEffect(() => {
+    useGLTF.preload(normalizedPath, DRACO_DECODER_URL)
+  }, [normalizedPath])
   
   const meshRef = useRef<THREE.Group>(null)
   const processedSceneRef = useRef<THREE.Group | null>(null)

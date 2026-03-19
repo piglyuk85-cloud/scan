@@ -24,7 +24,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ru">
-      <body className={inter.className}>
+      <body className={inter.className} suppressHydrationWarning>
         <Navbar />
         <main className="min-h-screen">
           {children}
