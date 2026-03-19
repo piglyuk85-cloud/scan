@@ -10,28 +10,14 @@ export default function CameraPage() {
   const [hasPermission, setHasPermission] = useState<boolean | null>(null)
   const [isMounted, setIsMounted] = useState(false)
   const [cameraSupported, setCameraSupported] = useState<boolean | null>(null)
-  const [hasAccess, setHasAccess] = useState(false)
-  const [loading, setLoading] = useState(true)
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const animationFrameRef = useRef<number | null>(null)
 
-  // Проверяем права доступа через API (сессия в HttpOnly cookie)
   useEffect(() => {
     setIsMounted(true)
-    fetch('/api/auth/me', { credentials: 'include' })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.role === 'super') {
-          setHasAccess(true)
-        } else {
-          router.push('/')
-        }
-      })
-      .catch(() => router.push('/'))
-      .finally(() => setLoading(false))
-  }, [router])
+  }, [])
 
   useEffect(() => {
     return () => {
@@ -267,20 +253,6 @@ export default function CameraPage() {
         }, 2000)
       }
     }
-  }
-
-  // Если нет доступа или идет проверка, показываем загрузку (или ничего, пока идет редирект)
-  if (loading || !hasAccess) {
-    return (
-      <div className="container mx-auto max-w-4xl px-4 py-8">
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <div className="text-center py-8">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">Загрузка...</p>
-          </div>
-        </div>
-      </div>
-    )
   }
 
   return (

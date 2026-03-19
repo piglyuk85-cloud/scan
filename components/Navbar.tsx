@@ -8,7 +8,7 @@ export default function Navbar() {
   const pathname = usePathname()
   const [isOpen, setIsOpen] = useState(false)
   const [siteName, setSiteName] = useState('ВГУ Галерея')
-  const [isSuperAdmin, setIsSuperAdmin] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
 
   // Роль определяем через API (сессия в HttpOnly cookie)
   useEffect(() => {
@@ -16,7 +16,7 @@ export default function Navbar() {
     fetch('/api/auth/me', { credentials: 'include' })
       .then((res) => res.json())
       .then((data) => {
-        setIsSuperAdmin(data.role === 'super')
+        setIsAdmin(data.role === 'super' || data.role === 'admin')
       })
       .catch(() => {})
   }, [])
@@ -36,8 +36,7 @@ export default function Navbar() {
     { href: '/', label: 'Главная' },
     { href: '/catalog', label: 'Каталог' },
     { href: '/gallery', label: 'Виртуальная галерея' },
-    { href: '/about', label: 'О галерее' },
-    { href: '/user-guide', label: 'Руководство' },
+    { href: '/camera', label: 'Камера' },
   ])
 
   useEffect(() => {
@@ -52,20 +51,20 @@ export default function Navbar() {
             { href: '/', label: data.settings.navigation.home },
             { href: '/catalog', label: data.settings.navigation.catalog },
             { href: '/gallery', label: data.settings.navigation.virtualGallery },
-            { href: '/about', label: data.settings.navigation.about },
-            { href: '/user-guide', label: 'Руководство' },
+            { href: '/camera', label: data.settings.navigation.camera || 'Камера' },
           ]
           
-          // Добавляем ссылку на камеру только для супер-администратора (перед Руководством)
-          if (isSuperAdmin) {
-            links.splice(4, 0, { href: '/camera', label: data.settings.navigation.camera || 'Камера' })
+          // Руководство и "О галерее" доступны только администраторам
+          if (isAdmin) {
+            links.push({ href: '/about', label: data.settings.navigation.about })
+            links.push({ href: '/user-guide', label: 'Руководство' })
           }
           
           setNavLinks(links)
         }
       })
       .catch(() => {})
-  }, [isSuperAdmin])
+  }, [isAdmin])
 
   return (
     <nav className="bg-white shadow-md sticky top-0 z-50">

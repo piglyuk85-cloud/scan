@@ -64,7 +64,16 @@ export function middleware(request: NextRequest) {
   // Защищаем /api/admin/*
   const isProtectedApi = pathname.startsWith('/api/admin')
 
-  if (!isProtectedAdminPage && !isProtectedApi) {
+  // Защищаем отдельные страницы контента: только для администратора
+  const isProtectedContentPage =
+    pathname === '/about' ||
+    pathname.startsWith('/about/') ||
+    pathname === '/user-guide' ||
+    pathname.startsWith('/user-guide/') ||
+    pathname === '/help' ||
+    pathname.startsWith('/help/')
+
+  if (!isProtectedAdminPage && !isProtectedApi && !isProtectedContentPage) {
     return NextResponse.next()
   }
 
@@ -94,5 +103,8 @@ export const config = {
   matcher: [
     '/admin/:path*',
     '/api/admin/:path*',
+    '/about/:path*',
+    '/user-guide/:path*',
+    '/help/:path*',
   ],
 }
